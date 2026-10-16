@@ -1,1 +1,1 @@
-# IA10 bridge intentionally uses Python standard library only.
+psycopg[binary]>=3.2,<4
