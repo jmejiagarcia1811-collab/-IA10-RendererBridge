@@ -16,3 +16,14 @@ services:
         generateValue: true
       - key: SHOTSTACK_API_BASE
         value: https://api.shotstack.io/edit/stage
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ia10-control-queue
+          property: connectionString
+
+databases:
+  - name: ia10-control-queue
+    databaseName: ia10_control_queue
+    user: ia10_control_queue_user
+    plan: free
+    region: frankfurt
