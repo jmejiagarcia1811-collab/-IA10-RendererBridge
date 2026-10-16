@@ -76,17 +76,29 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path in ("/health", "/"):
             db_mode = "postgres" if DATABASE_URL else "sqlite-local-ephemeral"
+            db_ok = False
+            queue_counts = {}
+            test_render = {"state": "unknown", "render_url_available": False, "error": None}
             try:
                 con = connect_db()
-                con.close()
                 db_ok = True
-            except Exception:
-                db_ok = False
+                rows = execute(con, "SELECT state, COUNT(*) AS count FROM jobs GROUP BY state").fetchall()
+                queue_counts = {str(row["state"]): int(row["count"]) for row in rows}
+                row = execute(con, "SELECT state, render_url, error FROM jobs WHERE title=%s ORDER BY id DESC LIMIT 1",
+                              ("IA10_BOOTSTRAP_TEST_RENDER_ONCE",)).fetchone()
+                if row:
+                    test_render = {"state": str(row["state"]), "render_url_available": bool(row["render_url"]),
+                                   "error": str(row["error"] or "")[:180] or None}
+                con.close()
+            except Exception as exc:
+                test_render["error"] = str(exc)[:180]
             self.send_json(200 if db_ok else 503, {
               "service":"ia10-renderer-bridge", "status":"alive" if db_ok else "degraded",
               "database_mode":db_mode, "database_ok":db_ok,
               "render_configured":bool(os.environ.get("SHOTSTACK_API_KEY")),
               "auth_configured":bool(os.environ.get("IA10_BRIDGE_TOKEN")),
+              "bootstrap_test_enabled":os.environ.get("IA10_BOOTSTRAP_TEST_RENDER", "").strip().lower() in ("1", "true", "yes"),
+              "queue_counts":queue_counts, "bootstrap_test_render":test_render,
               "note":"Health does not prove provider validity, video QC, or publication."
             })
             return
