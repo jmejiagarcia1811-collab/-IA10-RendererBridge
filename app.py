@@ -235,7 +235,7 @@ def bootstrap_test_render_once():
     """Optionally enqueue one idempotent sandbox render without exposing a public unauthenticated endpoint."""
     if os.environ.get("IA10_BOOTSTRAP_TEST_RENDER", "").strip().lower() not in ("1", "true", "yes"):
         return
-    title = "IA10_BOOTSTRAP_TEST_RENDER_ONCE"
+    title = "IA10_BOOTSTRAP_TEST_RENDER_RETRY_1"
     edit = {
         "timeline": {
             "background": "#101820",
