@@ -32,6 +32,15 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self.send_json(404, {"error": "not_found"})
 
+    def do_HEAD(self):
+        if self.path in ("/health", "/"):
+            self.send_response(200)
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+        else:
+            self.send_response(404)
+            self.end_headers()
+
     def do_POST(self):
         if self.path != "/render":
             self.send_json(404, {"error": "not_found"})
