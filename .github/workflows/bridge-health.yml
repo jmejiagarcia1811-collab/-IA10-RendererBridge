@@ -40,7 +40,8 @@ jobs:
                   if data["render_configured"] is not True or data["auth_configured"] is not True:
                       raise RuntimeError("Bridge is alive but renderer/auth configuration is incomplete")
                   print("PASS: bridge alive; database reachable; renderer key and bridge auth configured.")
-                  print("NOTE: this check does not prove Shotstack accepts a render or that a video passes QC.")
+                  print("QUEUE_DIAGNOSTICS: " + json.dumps({"queue_counts": data.get("queue_counts", {}), "bootstrap_test_enabled": data.get("bootstrap_test_enabled"), "bootstrap_test_render": data.get("bootstrap_test_render")}, sort_keys=True))
+                  print("NOTE: health and queue diagnostics do not prove video QC or publication.")
                   sys.exit(0)
               except Exception as exc:
                   last_error = exc
