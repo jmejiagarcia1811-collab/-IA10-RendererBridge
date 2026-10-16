@@ -1,0 +1,62 @@
+name: IA10 Diagnostic MP4 Smoke Test
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/media-smoke.yml"
+  workflow_dispatch:
+  schedule:
+    - cron: "37 * * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  validate-mp4:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Download and validate the live diagnostic MP4
+        run: |
+          python -m pip install --disable-pip-version-check "imageio-ffmpeg>=0.5.1,<1"
+          python - <<'PY'
+          import os, re, subprocess, sys, time, urllib.error, urllib.request
+          url = "https://ia10-renderer-bridge.onrender.com/media/ia10-test-1.mp4"
+          path = "/tmp/ia10-test-1.mp4"
+          last_error = None
+          for attempt in range(3):
+              try:
+                  req = urllib.request.Request(url, headers={"Cache-Control": "no-cache", "User-Agent": "IA10-MP4-Smoke-Test"})
+                  with urllib.request.urlopen(req, timeout=45) as response:
+                      if response.status != 200:
+                          raise RuntimeError(f"HTTP {response.status}")
+                      data = response.read()
+                      content_type = response.headers.get("Content-Type", "")
+                  if len(data) < 10000:
+                      raise RuntimeError(f"MP4 too small: {len(data)} bytes")
+                  if b"ftyp" not in data[:64]:
+                      raise RuntimeError("Missing MP4 ftyp signature")
+                  with open(path, "wb") as f:
+                      f.write(data)
+                  import imageio_ffmpeg
+                  ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
+                  probe = subprocess.run([ffmpeg, "-hide_banner", "-i", path], text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30)
+                  report = probe.stderr
+                  if "Video:" not in report:
+                      raise RuntimeError("No decodable video stream reported by FFmpeg: " + report[-1200:])
+                  if not re.search(r"1080x1920", report):
+                      raise RuntimeError("Expected 1080x1920 vertical video; probe output: " + report[-1200:])
+                  decoded = subprocess.run([ffmpeg, "-v", "error", "-i", path, "-f", "null", "-"], text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30)
+                  if decoded.returncode != 0 or decoded.stderr.strip():
+                      raise RuntimeError("FFmpeg decode check failed: " + decoded.stderr[-1200:])
+                  print(f"PASS: diagnostic MP4 downloaded; bytes={len(data)}; content_type={content_type}; resolution=1080x1920; FFmpeg decode succeeded.")
+                  print("LIMIT: this validates only the diagnostic sample, not a Shotstack production render, editorial QC, or publication.")
+                  sys.exit(0)
+              except Exception as exc:
+                  last_error = exc
+                  print(f"Attempt {attempt + 1}/3 failed: {exc}")
+                  if attempt < 2:
+                      time.sleep(10)
+          sys.exit(f"FAIL: live MP4 smoke test did not pass: {last_error}")
+          PY
