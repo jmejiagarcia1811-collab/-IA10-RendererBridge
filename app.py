@@ -17,14 +17,23 @@ def connect_db():
         con.execute("""CREATE TABLE IF NOT EXISTS jobs (
           id BIGSERIAL PRIMARY KEY, title TEXT NOT NULL, edit_json TEXT NOT NULL,
           state TEXT NOT NULL, created_at BIGINT NOT NULL, updated_at BIGINT NOT NULL,
-          provider_id TEXT, error TEXT)""")
+          provider_id TEXT, render_url TEXT, error TEXT)""")
     else:
         con = sqlite3.connect(DB_PATH)
         con.row_factory = sqlite3.Row
         con.execute("""CREATE TABLE IF NOT EXISTS jobs (
           id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, edit_json TEXT NOT NULL,
           state TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
-          provider_id TEXT, error TEXT)""")
+          provider_id TEXT, render_url TEXT, error TEXT)""")
+    # Add the render URL column to existing queue databases without losing jobs.
+    if isinstance(con, sqlite3.Connection):
+        try:
+            con.execute("ALTER TABLE jobs ADD COLUMN render_url TEXT")
+        except sqlite3.OperationalError as exc:
+            if "duplicate column name" not in str(exc).lower():
+                raise
+    else:
+        con.execute("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS render_url TEXT")
     con.commit()
     return con
 
@@ -87,7 +96,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 con = connect_db()
                 jobs = [dict(r) for r in execute(con,
-                  "SELECT id,title,state,created_at,updated_at,provider_id,error FROM jobs ORDER BY id DESC LIMIT 100")]
+                  "SELECT id,title,state,created_at,updated_at,provider_id,render_url,error FROM jobs ORDER BY id DESC LIMIT 100")]
                 con.close()
                 return self.send_json(200, {"jobs":jobs})
             except Exception:
@@ -194,8 +203,8 @@ def poll_submitted_render():
         now = int(time.time())
         if status in ("done", "completed", "complete"):
             con = connect_db()
-            execute(con, "UPDATE jobs SET state='RENDERED',updated_at=%s WHERE id=%s AND state='RENDER_SUBMITTED'",
-                    (now, job["id"]))
+            execute(con, "UPDATE jobs SET state='RENDERED',render_url=%s,updated_at=%s WHERE id=%s AND state='RENDER_SUBMITTED'",
+                    (str(data.get("url") or data.get("output") or "")[:2000], now, job["id"]))
             con.commit(); con.close()
             print("render_poll id=%s state=RENDERED" % job["id"], flush=True)
         elif status in ("failed", "error"):
