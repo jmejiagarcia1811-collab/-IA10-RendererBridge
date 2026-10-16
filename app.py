@@ -292,6 +292,13 @@ def background_queue_worker():
             with urllib.request.urlopen(req, timeout=15) as response:
                 payload = response.read(1000).decode("utf-8", "replace")
                 print("queue_worker status=%s result=%s" % (response.status, payload), flush=True)
+        except urllib.error.HTTPError as exc:
+            # Preserve provider error details for diagnosis without logging credentials.
+            try:
+                detail = exc.read(1200).decode("utf-8", "replace")
+            except Exception:
+                detail = ""
+            print("queue_worker_http_error status=%s detail=%s" % (exc.code, detail[:1200]), flush=True)
         except Exception as exc:
             print("queue_worker_error=%s" % str(exc)[:200], flush=True)
 
