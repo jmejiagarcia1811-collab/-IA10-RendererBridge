@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """IA10 renderer bridge with guarded queue. Provider/API secrets are environment-only."""
-import json, os, sqlite3, time, urllib.error, urllib.request
+import json, os, sqlite3, threading, time, urllib.error, urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 HOST = "0.0.0.0"
@@ -171,5 +171,29 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         print("%s - %s"%(self.log_date_time_string(),fmt%args),flush=True)
 
+def background_queue_worker():
+    """Poll the guarded queue while this free web service is awake."""
+    interval = max(30, int(os.environ.get("IA10_WORKER_INTERVAL_SECONDS", "60")))
+    while True:
+        time.sleep(interval)
+        # Never consume queued jobs until a provider key is configured.
+        if not os.environ.get("SHOTSTACK_API_KEY", "").strip():
+            continue
+        token = os.environ.get("IA10_BRIDGE_TOKEN", "")
+        if not token:
+            continue
+        req = urllib.request.Request(
+            "http://127.0.0.1:%s/jobs/process-next" % PORT,
+            data=b"{}",
+            headers={"Content-Type": "application/json", "Authorization": "Bearer " + token},
+            method="POST")
+        try:
+            with urllib.request.urlopen(req, timeout=15) as response:
+                payload = response.read(1000).decode("utf-8", "replace")
+                print("queue_worker status=%s result=%s" % (response.status, payload), flush=True)
+        except Exception as exc:
+            print("queue_worker_error=%s" % str(exc)[:200], flush=True)
+
 connect_db().close()
+threading.Thread(target=background_queue_worker, name="ia10-queue-worker", daemon=True).start()
 ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()
