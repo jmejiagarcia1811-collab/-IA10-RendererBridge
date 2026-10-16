@@ -219,6 +219,46 @@ def poll_submitted_render():
     except Exception as exc:
         print("render_poll_error id=%s error=%s" % (job["id"], str(exc)[:180]), flush=True)
 
+def bootstrap_test_render_once():
+    """Optionally enqueue one idempotent sandbox render without exposing a public unauthenticated endpoint."""
+    if os.environ.get("IA10_BOOTSTRAP_TEST_RENDER", "").strip().lower() not in ("1", "true", "yes"):
+        return
+    title = "IA10_BOOTSTRAP_TEST_RENDER_ONCE"
+    edit = {
+        "timeline": {
+            "background": "#101820",
+            "tracks": [{
+                "clips": [{
+                    "asset": {
+                        "type": "image",
+                        "src": "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1080&q=80"
+                    },
+                    "start": 0,
+                    "length": 5,
+                    "fit": "crop"
+                }]
+            }]
+        },
+        "output": {
+            "format": "mp4",
+            "resolution": "custom",
+            "size": {"width": 1080, "height": 1920}
+        }
+    }
+    con = connect_db()
+    try:
+        existing = execute(con, "SELECT id FROM jobs WHERE title=%s LIMIT 1", (title,)).fetchone()
+        if existing:
+            print("bootstrap_test_render already_exists id=%s" % existing["id"], flush=True)
+            return
+        now = int(time.time())
+        execute(con, "INSERT INTO jobs(title,edit_json,state,created_at,updated_at) VALUES(%s,%s,%s,%s,%s)",
+                (title, json.dumps(edit), "QUEUED", now, now))
+        con.commit()
+        print("bootstrap_test_render queued_once", flush=True)
+    finally:
+        con.close()
+
 def background_queue_worker():
     """Poll the guarded queue while this free web service is awake."""
     interval = max(30, int(os.environ.get("IA10_WORKER_INTERVAL_SECONDS", "60")))
@@ -244,5 +284,6 @@ def background_queue_worker():
             print("queue_worker_error=%s" % str(exc)[:200], flush=True)
 
 connect_db().close()
+bootstrap_test_render_once()
 threading.Thread(target=background_queue_worker, name="ia10-queue-worker", daemon=True).start()
 ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()
