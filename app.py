@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """IA10 renderer bridge with guarded queue. Provider/API secrets are environment-only."""
-import json, os, sqlite3, threading, time, urllib.error, urllib.request
+import json, mimetypes, os, sqlite3, subprocess, threading, time, urllib.error, urllib.request
+from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 HOST = "0.0.0.0"
@@ -8,6 +9,8 @@ PORT = int(os.environ.get("PORT", "10000"))
 MAX_BODY = 1_000_000
 DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
 DB_PATH = os.environ.get("IA10_DB_PATH", "/tmp/ia10-queue.sqlite3")
+MEDIA_DIR = Path(os.environ.get("IA10_MEDIA_DIR", "/tmp/ia10-media"))
+MEDIA_DIR.mkdir(parents=True, exist_ok=True)
 
 def connect_db():
     if DATABASE_URL:
@@ -47,6 +50,40 @@ def parse_body(handler):
     if length < 2 or length > MAX_BODY:
         raise ValueError("invalid_body_size")
     return json.loads(handler.rfile.read(length).decode("utf-8"))
+
+def render_local_test_video(filename):
+    """Create a clearly labelled local technical test MP4; never used for production jobs."""
+    from PIL import Image, ImageDraw, ImageFont
+    import imageio_ffmpeg
+    MEDIA_DIR.mkdir(parents=True, exist_ok=True)
+    image_path = MEDIA_DIR / (filename + ".png")
+    video_path = MEDIA_DIR / filename
+    im = Image.new("RGB", (1080, 1920), (12, 20, 32))
+    draw = ImageDraw.Draw(im)
+    try:
+        font_big = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 78)
+        font_mid = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 46)
+        font_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 30)
+    except Exception:
+        font_big = font_mid = font_small = ImageFont.load_default()
+    draw.rounded_rectangle((70, 280, 1010, 1640), radius=44, fill=(20, 35, 52), outline=(50, 190, 180), width=5)
+    draw.text((115, 430), "IA 3.0", font=font_big, fill=(255, 255, 255))
+    draw.text((115, 590), "PRUEBA TÉCNICA", font=font_mid, fill=(65, 220, 205))
+    draw.line((115, 700, 900, 700), fill=(65, 220, 205), width=5)
+    draw.text((115, 800), "Render local activo", font=font_mid, fill=(255, 255, 255))
+    draw.text((115, 900), "Vídeo de diagnóstico", font=font_mid, fill=(210, 220, 232))
+    draw.text((115, 1480), "No aprobado para publicación", font=font_small, fill=(255, 190, 90))
+    im.save(image_path, format="PNG")
+    ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
+    subprocess.run([ffmpeg, "-y", "-loop", "1", "-i", str(image_path), "-t", "5",
+                    "-r", "24", "-vf", "scale=1080:1920", "-c:v", "libx264",
+                    "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(video_path)],
+                   check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=120)
+    try:
+        image_path.unlink()
+    except Exception:
+        pass
+    return video_path
 
 def submit_render(edit):
     key = os.environ.get("SHOTSTACK_API_KEY", "")
@@ -102,6 +139,22 @@ class Handler(BaseHTTPRequestHandler):
               "queue_counts":queue_counts, "bootstrap_test_render":test_render,
               "note":"Health does not prove provider validity, video QC, or publication."
             })
+            return
+        if path.startswith("/media/") and self.command == "GET":
+            filename = path[len("/media/"):]
+            if not filename or Path(filename).name != filename or not filename.endswith(".mp4"):
+                return self.send_json(404, {"error":"not_found"})
+            media_path = MEDIA_DIR / filename
+            try:
+                data = media_path.read_bytes()
+            except OSError:
+                return self.send_json(404, {"error":"media_not_found"})
+            self.send_response(200)
+            self.send_header("Content-Type", "video/mp4")
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(data)
             return
         if path == "/jobs":
             if not self.authorized():
@@ -161,6 +214,22 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(200, {"processed":True,"id":job["id"],"state":"RENDER_SUBMITTED","provider_response":result})
             except urllib.error.HTTPError as exc:
                 detail = "provider_http_%s: %s"%(exc.code,exc.read(1500).decode("utf-8","replace"))
+                # Only the bootstrap diagnostic may use a local fallback. Never substitute
+                # a placeholder for a real content job or mark it publish-ready.
+                if exc.code == 403 and str(job["title"]).startswith("IA10_BOOTSTRAP_TEST_RENDER"):
+                    try:
+                        filename = "ia10-test-%s.mp4" % job["id"]
+                        render_local_test_video(filename)
+                        public_url = os.environ.get("IA10_PUBLIC_BASE_URL", "https://ia10-renderer-bridge.onrender.com").rstrip("/") + "/media/" + filename
+                        con = connect_db()
+                        execute(con, "UPDATE jobs SET state=%s,render_url=%s,error=%s,updated_at=%s WHERE id=%s",
+                                ("RENDERED", public_url, "local_test_fallback_after_shotstack_403", int(time.time()), job["id"]))
+                        con.commit(); con.close()
+                        return self.send_json(200, {"processed":True,"id":job["id"],"state":"RENDERED",
+                            "renderer":"local-test-fallback","render_url":public_url,
+                            "provider_error":"Shotstack Sandbox key rejected; local diagnostic MP4 generated. Not approved for publication."})
+                    except Exception as fallback_exc:
+                        detail += "; local_test_fallback_failed: " + str(fallback_exc)[:180]
             except Exception as exc:
                 detail = str(exc)[:300]
             try:
