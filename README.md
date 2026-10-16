@@ -1,2 +1,22 @@
-# -IA10-RendererBridge
-Trabajo IA 
+# IA10 Renderer Bridge (public deployment copy)
+
+Minimal HTTP bridge for submitting Shotstack Edit API render jobs.
+
+## Security
+- No API keys or bearer tokens are stored in this repository.
+- Set `SHOTSTACK_API_KEY` as a secret environment variable in Render.
+- Render generates `IA10_BRIDGE_TOKEN`; use it as a bearer token when calling `POST /render`.
+- `GET /health` exposes only whether required settings are present, never their values.
+- This is a deployment copy; the original project repository remains private.
+
+## Deploy on Render
+1. Create a Blueprint from this repository and review `render.yaml`.
+2. Add the Shotstack Sandbox API key to the `SHOTSTACK_API_KEY` secret field.
+3. Deploy and verify `/health`.
+4. Only test a real render after confirming the key and request payload.
+
+## API
+- `GET /health`: service and configuration status.
+- `POST /render`: expects JSON shaped as `{"edit":{"timeline":{},"output":{}}}` and an `Authorization: Bearer <IA10_BRIDGE_TOKEN>` header.
+
+A healthy endpoint does not mean rendering or social publishing is configured.
