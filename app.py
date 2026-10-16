@@ -1,22 +1,37 @@
 #!/usr/bin/env python3
-"""IA10 renderer bridge + guarded job queue. Secrets stay in environment variables."""
+"""IA10 renderer bridge with guarded queue. Provider/API secrets are environment-only."""
 import json, os, sqlite3, time, urllib.error, urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 HOST = "0.0.0.0"
 PORT = int(os.environ.get("PORT", "10000"))
 MAX_BODY = 1_000_000
+DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
 DB_PATH = os.environ.get("IA10_DB_PATH", "/tmp/ia10-queue.sqlite3")
 
 def connect_db():
-    con = sqlite3.connect(DB_PATH)
-    con.row_factory = sqlite3.Row
-    con.execute("""CREATE TABLE IF NOT EXISTS jobs (
-      id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, edit_json TEXT NOT NULL,
-      state TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
-      provider_id TEXT, error TEXT)""")
+    if DATABASE_URL:
+        import psycopg
+        from psycopg.rows import dict_row
+        con = psycopg.connect(DATABASE_URL, row_factory=dict_row, connect_timeout=5)
+        con.execute("""CREATE TABLE IF NOT EXISTS jobs (
+          id BIGSERIAL PRIMARY KEY, title TEXT NOT NULL, edit_json TEXT NOT NULL,
+          state TEXT NOT NULL, created_at BIGINT NOT NULL, updated_at BIGINT NOT NULL,
+          provider_id TEXT, error TEXT)""")
+    else:
+        con = sqlite3.connect(DB_PATH)
+        con.row_factory = sqlite3.Row
+        con.execute("""CREATE TABLE IF NOT EXISTS jobs (
+          id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, edit_json TEXT NOT NULL,
+          state TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+          provider_id TEXT, error TEXT)""")
     con.commit()
     return con
+
+def execute(con, sql, params=()):
+    if isinstance(con, sqlite3.Connection):
+        sql = sql.replace("%s", "?")
+    return con.execute(sql, params)
 
 def parse_body(handler):
     length = int(handler.headers.get("Content-Length", "0"))
@@ -51,22 +66,32 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path in ("/health", "/"):
-            self.send_json(200, {
-              "service":"ia10-renderer-bridge", "status":"alive",
+            db_mode = "postgres" if DATABASE_URL else "sqlite-local-ephemeral"
+            try:
+                con = connect_db()
+                con.close()
+                db_ok = True
+            except Exception:
+                db_ok = False
+            self.send_json(200 if db_ok else 503, {
+              "service":"ia10-renderer-bridge", "status":"alive" if db_ok else "degraded",
+              "database_mode":db_mode, "database_ok":db_ok,
               "render_configured":bool(os.environ.get("SHOTSTACK_API_KEY")),
               "auth_configured":bool(os.environ.get("IA10_BRIDGE_TOKEN")),
-              "queue":"sqlite-local-ephemeral",
               "note":"Health does not prove provider validity, video QC, or publication."
             })
             return
         if self.path == "/jobs":
             if not self.authorized():
                 return self.send_json(401, {"error":"unauthorized"})
-            con = connect_db()
-            jobs = [dict(r) for r in con.execute(
-              "SELECT id,title,state,created_at,updated_at,provider_id,error FROM jobs ORDER BY id DESC LIMIT 100")]
-            con.close()
-            return self.send_json(200, {"jobs":jobs})
+            try:
+                con = connect_db()
+                jobs = [dict(r) for r in execute(con,
+                  "SELECT id,title,state,created_at,updated_at,provider_id,error FROM jobs ORDER BY id DESC LIMIT 100")]
+                con.close()
+                return self.send_json(200, {"jobs":jobs})
+            except Exception:
+                return self.send_json(503, {"error":"database_unavailable"})
         self.send_json(404, {"error":"not_found"})
 
     def do_POST(self):
@@ -82,39 +107,46 @@ class Handler(BaseHTTPRequestHandler):
             if not isinstance(title, str) or not title.strip() or not isinstance(edit, dict) or not isinstance(edit.get("timeline"), dict) or not isinstance(edit.get("output"), dict):
                 return self.send_json(400, {"error":"title_and_shotstack_edit_required"})
             now = int(time.time())
-            con = connect_db()
-            cur = con.execute("INSERT INTO jobs(title,edit_json,state,created_at,updated_at) VALUES(?,?,?,?,?)",
-              (title.strip()[:200], json.dumps(edit), "QUEUED", now, now))
-            jid = cur.lastrowid
-            con.commit(); con.close()
-            return self.send_json(201, {"id":jid,"state":"QUEUED","note":"Queued; not yet rendered or published."})
+            try:
+                con = connect_db()
+                row = execute(con, "INSERT INTO jobs(title,edit_json,state,created_at,updated_at) VALUES(%s,%s,%s,%s,%s) RETURNING id",
+                  (title.strip()[:200], json.dumps(edit), "QUEUED", now, now)).fetchone()
+                jid = row["id"]
+                con.commit(); con.close()
+                return self.send_json(201, {"id":jid,"state":"QUEUED","note":"Queued; not yet rendered or published."})
+            except Exception:
+                return self.send_json(503, {"error":"database_unavailable"})
 
         if self.path == "/jobs/process-next":
-            con = connect_db()
-            job = con.execute("SELECT * FROM jobs WHERE state='QUEUED' ORDER BY id LIMIT 1").fetchone()
-            if not job:
-                con.close()
-                return self.send_json(200, {"processed":False,"note":"queue_empty"})
-            now = int(time.time())
-            con.execute("UPDATE jobs SET state='PROCESSING',updated_at=? WHERE id=?", (now,job["id"]))
-            con.commit(); con.close()
+            try:
+                con = connect_db()
+                job = execute(con, "SELECT * FROM jobs WHERE state='QUEUED' ORDER BY id LIMIT 1").fetchone()
+                if not job:
+                    con.close()
+                    return self.send_json(200, {"processed":False,"note":"queue_empty"})
+                execute(con, "UPDATE jobs SET state='PROCESSING',updated_at=%s WHERE id=%s", (int(time.time()),job["id"]))
+                con.commit(); con.close()
+            except Exception:
+                return self.send_json(503, {"error":"database_unavailable"})
             try:
                 result = submit_render(json.loads(job["edit_json"]))
                 provider_id = (result.get("response") or {}).get("id") or (result.get("data") or {}).get("id") or ""
                 con = connect_db()
-                con.execute("UPDATE jobs SET state='RENDER_SUBMITTED',provider_id=?,updated_at=? WHERE id=?",
+                execute(con, "UPDATE jobs SET state='RENDER_SUBMITTED',provider_id=%s,updated_at=%s WHERE id=%s",
                   (str(provider_id),int(time.time()),job["id"]))
                 con.commit(); con.close()
                 return self.send_json(200, {"processed":True,"id":job["id"],"state":"RENDER_SUBMITTED","provider_response":result})
             except urllib.error.HTTPError as exc:
-                detail = exc.read(1500).decode("utf-8","replace")
-                state, detail = "FAILED", "provider_http_%s: %s"%(exc.code,detail)
+                detail = "provider_http_%s: %s"%(exc.code,exc.read(1500).decode("utf-8","replace"))
             except Exception as exc:
-                state, detail = "FAILED", str(exc)[:300]
-            con = connect_db()
-            con.execute("UPDATE jobs SET state=?,error=?,updated_at=? WHERE id=?",
-              (state,detail,int(time.time()),job["id"]))
-            con.commit(); con.close()
+                detail = str(exc)[:300]
+            try:
+                con = connect_db()
+                execute(con, "UPDATE jobs SET state='FAILED',error=%s,updated_at=%s WHERE id=%s",
+                  (detail,int(time.time()),job["id"]))
+                con.commit(); con.close()
+            except Exception:
+                pass
             return self.send_json(502, {"error":"render_failed","id":job["id"],"detail":detail})
 
         if self.path == "/render":
