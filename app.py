@@ -332,7 +332,7 @@ def bootstrap_test_render_once():
     """Optionally enqueue one idempotent sandbox render without exposing a public unauthenticated endpoint."""
     if os.environ.get("IA10_BOOTSTRAP_TEST_RENDER", "").strip().lower() not in ("1", "true", "yes"):
         return
-    title = "IA10_BOOTSTRAP_TEST_RENDER_LOCAL_FALLBACK_2"
+    title = "IA10_BOOTSTRAP_TEST_RENDER_1080_VERTICAL_1"
     edit = {
         "timeline": {
             "background": "#101820",
@@ -350,8 +350,8 @@ def bootstrap_test_render_once():
         },
         "output": {
             "format": "mp4",
-            "resolution": "custom",
-            "size": {"width": 1080, "height": 1920}
+            "resolution": "1080",
+            "aspectRatio": "9:16"
         }
     }
     con = connect_db()
