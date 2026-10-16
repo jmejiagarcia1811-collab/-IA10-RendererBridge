@@ -171,6 +171,45 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         print("%s - %s"%(self.log_date_time_string(),fmt%args),flush=True)
 
+def poll_submitted_render():
+    """Poll one submitted Shotstack render and persist its terminal state."""
+    key = os.environ.get("SHOTSTACK_API_KEY", "").strip()
+    if not key:
+        return
+    con = connect_db()
+    try:
+        job = execute(con, "SELECT id,provider_id FROM jobs WHERE state='RENDER_SUBMITTED' AND provider_id IS NOT NULL AND provider_id<>'' ORDER BY id LIMIT 1").fetchone()
+    finally:
+        con.close()
+    if not job:
+        return
+    base = os.environ.get("SHOTSTACK_API_BASE", "https://api.shotstack.io/edit/stage").rstrip("/")
+    req = urllib.request.Request(base + "/render/" + str(job["provider_id"]),
+        headers={"x-api-key": key}, method="GET")
+    try:
+        with urllib.request.urlopen(req, timeout=20) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        data = payload.get("response") or payload.get("data") or {}
+        status = str(data.get("status", "")).lower()
+        now = int(time.time())
+        if status in ("done", "completed", "complete"):
+            con = connect_db()
+            execute(con, "UPDATE jobs SET state='RENDERED',updated_at=%s WHERE id=%s AND state='RENDER_SUBMITTED'",
+                    (now, job["id"]))
+            con.commit(); con.close()
+            print("render_poll id=%s state=RENDERED" % job["id"], flush=True)
+        elif status in ("failed", "error"):
+            detail = str(data.get("error") or data.get("message") or "shotstack_render_failed")[:300]
+            con = connect_db()
+            execute(con, "UPDATE jobs SET state='FAILED',error=%s,updated_at=%s WHERE id=%s AND state='RENDER_SUBMITTED'",
+                    (detail, now, job["id"]))
+            con.commit(); con.close()
+            print("render_poll id=%s state=FAILED" % job["id"], flush=True)
+        else:
+            print("render_poll id=%s provider_status=%s" % (job["id"], status or "unknown"), flush=True)
+    except Exception as exc:
+        print("render_poll_error id=%s error=%s" % (job["id"], str(exc)[:180]), flush=True)
+
 def background_queue_worker():
     """Poll the guarded queue while this free web service is awake."""
     interval = max(30, int(os.environ.get("IA10_WORKER_INTERVAL_SECONDS", "60")))
@@ -179,6 +218,7 @@ def background_queue_worker():
         # Never consume queued jobs until a provider key is configured.
         if not os.environ.get("SHOTSTACK_API_KEY", "").strip():
             continue
+        poll_submitted_render()
         token = os.environ.get("IA10_BRIDGE_TOKEN", "")
         if not token:
             continue
