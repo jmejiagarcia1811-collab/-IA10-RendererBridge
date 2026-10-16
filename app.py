@@ -52,23 +52,40 @@ def parse_body(handler):
     return json.loads(handler.rfile.read(length).decode("utf-8"))
 
 def render_local_test_video(filename):
-    """Create a low-memory, clearly labelled diagnostic MP4; never used for production jobs."""
+    """Create a clearly labelled diagnostic MP4; never used for production jobs."""
+    from PIL import Image, ImageDraw, ImageFont
     import imageio_ffmpeg
     MEDIA_DIR.mkdir(parents=True, exist_ok=True)
+    image_path = MEDIA_DIR / (filename + ".png")
     video_path = MEDIA_DIR / filename
+    im = Image.new("RGB", (1080, 1920), (12, 20, 32))
+    draw = ImageDraw.Draw(im)
+    font_big = ImageFont.load_default(size=96)
+    font_mid = ImageFont.load_default(size=58)
+    font_small = ImageFont.load_default(size=38)
+    draw.rounded_rectangle((70, 280, 1010, 1640), radius=44, fill=(20, 35, 52), outline=(50, 190, 180), width=5)
+    draw.text((115, 430), "IA 3.0", font=font_big, fill=(255, 255, 255))
+    draw.text((115, 590), "PRUEBA TECNICA", font=font_mid, fill=(65, 220, 205))
+    draw.line((115, 700, 900, 700), fill=(65, 220, 205), width=5)
+    draw.text((115, 800), "Render local activo", font=font_mid, fill=(255, 255, 255))
+    draw.text((115, 900), "Video de diagnostico", font=font_mid, fill=(210, 220, 232))
+    draw.text((115, 1480), "NO APROBADO PARA PUBLICACION", font=font_small, fill=(255, 190, 90))
+    im.save(image_path, format="PNG")
     ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
-    # Generate frames inside FFmpeg instead of allocating a full-size Pillow image.
-    # One encoder thread and ultrafast preset reduce peak memory on Render Free (512 MiB).
-    vf = ("drawbox=x=70:y=280:w=940:h=1360:color=0x32beb4@1:t=5,"
-          "drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:"
-          "text='IA 3.0 - PRUEBA TECNICA - NO PUBLICAR':fontcolor=white:fontsize=60:"
-          "x=(w-text_w)/2:y=(h-text_h)/2")
-    subprocess.run([ffmpeg, "-y", "-f", "lavfi", "-i",
-                    "color=c=0x0c1420:s=1080x1920:r=24:d=5",
-                    "-vf", vf, "-an", "-c:v", "libx264", "-preset", "ultrafast",
-                    "-threads", "1", "-pix_fmt", "yuv420p", "-movflags", "+faststart",
-                    str(video_path)], check=True, stdout=subprocess.PIPE,
-                   stderr=subprocess.PIPE, timeout=90)
+    try:
+        subprocess.run([ffmpeg, "-y", "-loop", "1", "-i", str(image_path), "-t", "5",
+                        "-r", "24", "-vf", "scale=1080:1920", "-c:v", "libx264",
+                        "-preset", "ultrafast", "-threads", "1", "-pix_fmt", "yuv420p",
+                        "-movflags", "+faststart", str(video_path)],
+                       check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=90)
+    except subprocess.CalledProcessError as exc:
+        detail = (exc.stderr or b"").decode("utf-8", "replace")[-500:]
+        raise RuntimeError("ffmpeg_diagnostic_failed: " + detail)
+    finally:
+        try:
+            image_path.unlink()
+        except Exception:
+            pass
     return video_path
 
 def submit_render(edit):
