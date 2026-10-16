@@ -235,11 +235,12 @@ class Handler(BaseHTTPRequestHandler):
                         public_url = os.environ.get("IA10_PUBLIC_BASE_URL", "https://ia10-renderer-bridge.onrender.com").rstrip("/") + "/media/" + filename
                         con = connect_db()
                         execute(con, "UPDATE jobs SET state=%s,render_url=%s,error=%s,updated_at=%s WHERE id=%s",
-                                ("RENDERED", public_url, "local_test_fallback_after_shotstack_403", int(time.time()), job["id"]))
+                                ("FAILED", public_url, "Shotstack Sandbox key rejected; local diagnostic MP4 generated and is not a production render.", int(time.time()), job["id"]))
                         con.commit(); con.close()
-                        return self.send_json(200, {"processed":True,"id":job["id"],"state":"RENDERED",
-                            "renderer":"local-test-fallback","render_url":public_url,
-                            "provider_error":"Shotstack Sandbox key rejected; local diagnostic MP4 generated. Not approved for publication."})
+                        return self.send_json(502, {"processed":True,"id":job["id"],"state":"FAILED",
+                            "renderer":"local-test-fallback","diagnostic_url":public_url,
+                            "error":"shotstack_sandbox_key_rejected",
+                            "detail":"A diagnostic MP4 was generated, but the production render failed. This job is not approved for publication."})
                     except Exception as fallback_exc:
                         detail += "; local_test_fallback_failed: " + str(fallback_exc)[:180]
             except Exception as exc:
