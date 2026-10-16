@@ -344,12 +344,18 @@ def bootstrap_test_render_once():
 def background_queue_worker():
     """Poll the guarded queue while this free web service is awake."""
     interval = max(30, int(os.environ.get("IA10_WORKER_INTERVAL_SECONDS", "60")))
+    print("queue_worker_started interval=%s provider_key_configured=%s auth_token_configured=%s" % (
+        interval, bool(os.environ.get("SHOTSTACK_API_KEY", "").strip()),
+        bool(os.environ.get("IA10_BRIDGE_TOKEN", ""))), flush=True)
     while True:
         time.sleep(interval)
         # Never consume queued jobs until a provider key is configured.
         if not os.environ.get("SHOTSTACK_API_KEY", "").strip():
             continue
-        poll_submitted_render()
+        try:
+            poll_submitted_render()
+        except Exception as exc:
+            print("render_poll_worker_error=%s" % str(exc)[:180], flush=True)
         token = os.environ.get("IA10_BRIDGE_TOKEN", "")
         if not token:
             continue
