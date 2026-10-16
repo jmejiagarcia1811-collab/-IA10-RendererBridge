@@ -122,8 +122,8 @@ class Handler(BaseHTTPRequestHandler):
                 db_ok = True
                 rows = execute(con, "SELECT state, COUNT(*) AS count FROM jobs GROUP BY state").fetchall()
                 queue_counts = {str(row["state"]): int(row["count"]) for row in rows}
-                row = execute(con, "SELECT state, render_url, error FROM jobs WHERE title=%s ORDER BY id DESC LIMIT 1",
-                              ("IA10_BOOTSTRAP_TEST_RENDER_ONCE",)).fetchone()
+                row = execute(con, "SELECT state, render_url, error FROM jobs WHERE title LIKE %s ORDER BY id DESC LIMIT 1",
+                              ("IA10_BOOTSTRAP_TEST_RENDER%",)).fetchone()
                 if row:
                     test_render = {"state": str(row["state"]), "render_url_available": bool(row["render_url"]),
                                    "error": str(row["error"] or "")[:180] or None}
@@ -307,7 +307,7 @@ def bootstrap_test_render_once():
     """Optionally enqueue one idempotent sandbox render without exposing a public unauthenticated endpoint."""
     if os.environ.get("IA10_BOOTSTRAP_TEST_RENDER", "").strip().lower() not in ("1", "true", "yes"):
         return
-    title = "IA10_BOOTSTRAP_TEST_RENDER_LOCAL_FALLBACK_1"
+    title = "IA10_BOOTSTRAP_TEST_RENDER_LOCAL_FALLBACK_2"
     edit = {
         "timeline": {
             "background": "#101820",
@@ -361,7 +361,7 @@ def background_queue_worker():
             headers={"Content-Type": "application/json", "Authorization": "Bearer " + token},
             method="POST")
         try:
-            with urllib.request.urlopen(req, timeout=15) as response:
+            with urllib.request.urlopen(req, timeout=135) as response:
                 payload = response.read(1000).decode("utf-8", "replace")
                 print("queue_worker status=%s result=%s" % (response.status, payload), flush=True)
         except urllib.error.HTTPError as exc:
