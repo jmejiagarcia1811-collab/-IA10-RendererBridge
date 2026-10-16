@@ -74,7 +74,8 @@ class Handler(BaseHTTPRequestHandler):
         return bool(token) and self.headers.get("Authorization", "") == "Bearer " + token
 
     def do_GET(self):
-        if self.path in ("/health", "/"):
+        path = self.path.split("?", 1)[0]
+        if path in ("/health", "/"):
             db_mode = "postgres" if DATABASE_URL else "sqlite-local-ephemeral"
             db_ok = False
             queue_counts = {}
@@ -102,7 +103,7 @@ class Handler(BaseHTTPRequestHandler):
               "note":"Health does not prove provider validity, video QC, or publication."
             })
             return
-        if self.path == "/jobs":
+        if path == "/jobs":
             if not self.authorized():
                 return self.send_json(401, {"error":"unauthorized"})
             try:
@@ -116,6 +117,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_json(404, {"error":"not_found"})
 
     def do_POST(self):
+        path = self.path.split("?", 1)[0]
         if not self.authorized():
             return self.send_json(401, {"error":"unauthorized"})
         try:
@@ -123,7 +125,7 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             return self.send_json(400, {"error":"invalid_json_or_body_size"})
 
-        if self.path == "/jobs":
+        if path == "/jobs":
             title, edit = body.get("title"), body.get("edit")
             if not isinstance(title, str) or not title.strip() or not isinstance(edit, dict) or not isinstance(edit.get("timeline"), dict) or not isinstance(edit.get("output"), dict):
                 return self.send_json(400, {"error":"title_and_shotstack_edit_required"})
@@ -138,7 +140,7 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:
                 return self.send_json(503, {"error":"database_unavailable"})
 
-        if self.path == "/jobs/process-next":
+        if path == "/jobs/process-next":
             try:
                 con = connect_db()
                 job = execute(con, "SELECT * FROM jobs WHERE state='QUEUED' ORDER BY id LIMIT 1").fetchone()
@@ -170,7 +172,7 @@ class Handler(BaseHTTPRequestHandler):
                 pass
             return self.send_json(502, {"error":"render_failed","id":job["id"],"detail":detail})
 
-        if self.path == "/render":
+        if path == "/render":
             edit = body.get("edit") if isinstance(body,dict) else None
             if not isinstance(edit,dict) or not isinstance(edit.get("timeline"),dict) or not isinstance(edit.get("output"),dict):
                 return self.send_json(400, {"error":"expected_shotstack_edit_with_timeline_and_output"})
@@ -184,7 +186,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_json(404, {"error":"not_found"})
 
     def do_HEAD(self):
-        if self.path in ("/health", "/"):
+        path = self.path.split("?", 1)[0]
+        if path in ("/health", "/"):
             self.send_response(200); self.send_header("Cache-Control","no-store"); self.end_headers()
         else:
             self.send_response(404); self.end_headers()
