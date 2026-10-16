@@ -3,8 +3,6 @@ name: IA10 Diagnostic MP4 Smoke Test
 on:
   push:
     branches: [main]
-    paths:
-      - ".github/workflows/media-smoke.yml"
   workflow_dispatch:
   schedule:
     - cron: "37 * * * *"
