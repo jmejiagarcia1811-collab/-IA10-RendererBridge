@@ -76,7 +76,7 @@ def render_local_test_video(filename):
     im.save(image_path, format="PNG")
     ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
     subprocess.run([ffmpeg, "-y", "-loop", "1", "-i", str(image_path), "-t", "5",
-                    "-r", "24", "-vf", "scale=1080:1920", "-c:v", "libx264",
+                    "-r", "24", "-vf", "scale=1080:1920", "-c:v", "libx264", "-preset", "ultrafast", "-threads", "1",
                     "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(video_path)],
                    check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=120)
     try:
@@ -303,6 +303,18 @@ def poll_submitted_render():
     except Exception as exc:
         print("render_poll_error id=%s error=%s" % (job["id"], str(exc)[:180]), flush=True)
 
+def recover_interrupted_bootstrap_jobs():
+    """Recover only diagnostic jobs interrupted before a provider render ID was assigned."""
+    con = connect_db()
+    try:
+        cur = execute(con, "UPDATE jobs SET state=%s,error=%s,updated_at=%s WHERE state='PROCESSING' AND title LIKE %s AND (provider_id IS NULL OR provider_id='')",
+                      ("QUEUED", "requeued_after_interrupted_diagnostic", int(time.time()), "IA10_BOOTSTRAP_TEST_RENDER%"))
+        count = cur.rowcount
+        con.commit()
+        print("queue_recovery requeued_bootstrap=%s" % count, flush=True)
+    finally:
+        con.close()
+
 def bootstrap_test_render_once():
     """Optionally enqueue one idempotent sandbox render without exposing a public unauthenticated endpoint."""
     if os.environ.get("IA10_BOOTSTRAP_TEST_RENDER", "").strip().lower() not in ("1", "true", "yes"):
@@ -375,6 +387,7 @@ def background_queue_worker():
             print("queue_worker_error=%s" % str(exc)[:200], flush=True)
 
 connect_db().close()
+recover_interrupted_bootstrap_jobs()
 bootstrap_test_render_once()
 threading.Thread(target=background_queue_worker, name="ia10-queue-worker", daemon=True).start()
 ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()
