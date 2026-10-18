@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """IA10 renderer bridge with guarded queue. Provider/API secrets are environment-only."""
-import json, mimetypes, os, sqlite3, subprocess, threading, time, urllib.error, urllib.request
+import json, mimetypes, os, sqlite3, subprocess, threading, time, traceback, urllib.error, urllib.request
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
