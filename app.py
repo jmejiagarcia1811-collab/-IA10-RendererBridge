@@ -357,7 +357,12 @@ def bootstrap_test_render_once():
     """Optionally enqueue one idempotent sandbox render without exposing a public unauthenticated endpoint."""
     if os.environ.get("IA10_BOOTSTRAP_TEST_RENDER", "").strip().lower() not in ("1", "true", "yes"):
         return
-    title = "IA10_BOOTSTRAP_TEST_RENDER_1080_VERTICAL_5"
+    # Optional run ID allows an explicitly requested fresh diagnostic without duplicating services.
+    run_id = os.environ.get("IA10_BOOTSTRAP_TEST_RUN_ID", "").strip()
+    if run_id and not all(ch.isalnum() or ch in "-_" for ch in run_id):
+        print("bootstrap_test_render invalid_run_id", flush=True)
+        return
+    title = "IA10_BOOTSTRAP_TEST_RENDER_1080_VERTICAL_5" + ("_" + run_id if run_id else "")
     edit = {
         "timeline": {
             "background": "#101820",
