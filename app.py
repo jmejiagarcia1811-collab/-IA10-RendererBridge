@@ -154,7 +154,11 @@ class Handler(BaseHTTPRequestHandler):
             except OSError:
                 # This one fixed diagnostic artifact is reproducible on demand because
                 # Render's ephemeral filesystem is not shared across deploy instances.
-                if filename != "ia10-test-1.mp4":
+                # Regenerate only numbered diagnostic artifacts; never serve arbitrary files.
+                is_diagnostic = (filename.startswith("ia10-test-") and
+                                 filename.endswith(".mp4") and
+                                 filename[len("ia10-test-"):-4].isdigit())
+                if not is_diagnostic:
                     return self.send_json(404, {"error":"media_not_found"})
                 try:
                     render_local_test_video(filename)
