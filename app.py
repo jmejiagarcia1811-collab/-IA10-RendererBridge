@@ -60,9 +60,10 @@ def render_local_test_video(filename):
     video_path = MEDIA_DIR / filename
     im = Image.new("RGB", (1080, 1920), (12, 20, 32))
     draw = ImageDraw.Draw(im)
-    font_big = ImageFont.load_default(size=96)
-    font_mid = ImageFont.load_default(size=58)
-    font_small = ImageFont.load_default(size=38)
+    # Use the no-argument bitmap font for compatibility across Pillow versions.
+    font_big = ImageFont.load_default()
+    font_mid = ImageFont.load_default()
+    font_small = ImageFont.load_default()
     draw.rounded_rectangle((70, 280, 1010, 1640), radius=44, fill=(20, 35, 52), outline=(50, 190, 180), width=5)
     draw.text((115, 430), "IA 3.0", font=font_big, fill=(255, 255, 255))
     draw.text((115, 590), "PRUEBA TECNICA", font=font_mid, fill=(65, 220, 205))
@@ -242,7 +243,9 @@ class Handler(BaseHTTPRequestHandler):
                             "error":"shotstack_sandbox_key_rejected",
                             "detail":"A diagnostic MP4 was generated, but the production render failed. This job is not approved for publication."})
                     except Exception as fallback_exc:
-                        detail += "; local_test_fallback_failed"
+                        # Log a short diagnostic without exposing credentials or request headers.
+                        print("diagnostic_fallback_error type=%s detail=%s" % (type(fallback_exc).__name__, str(fallback_exc)[:240]), flush=True)
+                        detail += "; local_test_fallback_failed_" + type(fallback_exc).__name__
             except Exception as exc:
                 detail = "render_error_" + type(exc).__name__
             try:
@@ -332,7 +335,7 @@ def bootstrap_test_render_once():
     """Optionally enqueue one idempotent sandbox render without exposing a public unauthenticated endpoint."""
     if os.environ.get("IA10_BOOTSTRAP_TEST_RENDER", "").strip().lower() not in ("1", "true", "yes"):
         return
-    title = "IA10_BOOTSTRAP_TEST_RENDER_1080_VERTICAL_3"
+    title = "IA10_BOOTSTRAP_TEST_RENDER_1080_VERTICAL_4"
     edit = {
         "timeline": {
             "background": "#101820",
