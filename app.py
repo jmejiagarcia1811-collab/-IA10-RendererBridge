@@ -90,10 +90,16 @@ def render_local_test_video(filename):
     return video_path
 
 def submit_render(edit):
-    key = os.environ.get("SHOTSTACK_API_KEY", "")
+    # Environment values may be pasted with surrounding whitespace/newlines.
+    # Strip surrounding whitespace before constructing HTTP headers.
+    key = os.environ.get("SHOTSTACK_API_KEY", "").strip()
     if not key:
         raise RuntimeError("renderer_not_configured")
-    base = os.environ.get("SHOTSTACK_API_BASE", "https://api.shotstack.io/edit/stage").rstrip("/")
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in key):
+        raise RuntimeError("renderer_key_contains_control_characters")
+    base = os.environ.get("SHOTSTACK_API_BASE", "https://api.shotstack.io/edit/stage").strip().rstrip("/")
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in base):
+        raise RuntimeError("renderer_base_url_contains_control_characters")
     req = urllib.request.Request(base + "/render",
       data=json.dumps({"timeline": edit["timeline"], "output": edit["output"]}).encode(),
       headers={"Content-Type":"application/json","x-api-key":key}, method="POST")
