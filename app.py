@@ -276,6 +276,8 @@ class Handler(BaseHTTPRequestHandler):
                         detail += "; local_test_fallback_failed_" + type(fallback_exc).__name__
             except Exception as exc:
                 detail = "render_error_" + type(exc).__name__
+                # Traceback gives the failing code location; do not log locals, headers, or credentials.
+                print("render_exception_traceback\\n" + traceback.format_exc()[-3000:], flush=True)
             try:
                 con = connect_db()
                 execute(con, "UPDATE jobs SET state='FAILED',error=%s,updated_at=%s WHERE id=%s",
