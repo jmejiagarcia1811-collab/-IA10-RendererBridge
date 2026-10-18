@@ -132,7 +132,7 @@ class Handler(BaseHTTPRequestHandler):
                                    "error": str(row["error"] or "")[:180] or None}
                 con.close()
             except Exception as exc:
-                test_render["error"] = str(exc)[:180]
+                test_render["error"] = "database_check_failed"
             self.send_json(200 if db_ok else 503, {
               "service":"ia10-renderer-bridge", "status":"alive" if db_ok else "degraded",
               "database_mode":db_mode, "database_ok":db_ok,
@@ -225,7 +225,7 @@ class Handler(BaseHTTPRequestHandler):
                 con.commit(); con.close()
                 return self.send_json(200, {"processed":True,"id":job["id"],"state":"RENDER_SUBMITTED","provider_response":result})
             except urllib.error.HTTPError as exc:
-                detail = "provider_http_%s: %s"%(exc.code,exc.read(1500).decode("utf-8","replace"))
+                detail = "provider_http_%s" % exc.code
                 # Only the bootstrap diagnostic may use a local fallback. Never substitute
                 # a placeholder for a real content job or mark it publish-ready.
                 if exc.code == 403 and str(job["title"]).startswith("IA10_BOOTSTRAP_TEST_RENDER"):
@@ -242,9 +242,9 @@ class Handler(BaseHTTPRequestHandler):
                             "error":"shotstack_sandbox_key_rejected",
                             "detail":"A diagnostic MP4 was generated, but the production render failed. This job is not approved for publication."})
                     except Exception as fallback_exc:
-                        detail += "; local_test_fallback_failed: " + str(fallback_exc)[:180]
+                        detail += "; local_test_fallback_failed"
             except Exception as exc:
-                detail = str(exc)[:300]
+                detail = "render_error_" + type(exc).__name__
             try:
                 con = connect_db()
                 execute(con, "UPDATE jobs SET state='FAILED',error=%s,updated_at=%s WHERE id=%s",
@@ -262,9 +262,9 @@ class Handler(BaseHTTPRequestHandler):
                 result = submit_render(edit)
                 return self.send_json(200, {"submitted":True,"provider_response":result})
             except urllib.error.HTTPError as exc:
-                return self.send_json(502, {"error":"shotstack_rejected_request","provider_status":exc.code,"detail":exc.read(1500).decode("utf-8","replace")})
+                return self.send_json(502, {"error":"shotstack_rejected_request","provider_status":exc.code,"detail":"provider_rejected_request"})
             except Exception as exc:
-                return self.send_json(503 if str(exc)=="renderer_not_configured" else 502, {"error":"render_failed","detail":str(exc)[:300]})
+                return self.send_json(503 if str(exc)=="renderer_not_configured" else 502, {"error":"render_failed","detail":"render_error_" + type(exc).__name__})
         self.send_json(404, {"error":"not_found"})
 
     def do_HEAD(self):
@@ -305,7 +305,7 @@ def poll_submitted_render():
             con.commit(); con.close()
             print("render_poll id=%s state=RENDERED" % job["id"], flush=True)
         elif status in ("failed", "error"):
-            detail = str(data.get("error") or data.get("message") or "shotstack_render_failed")[:300]
+            detail = "shotstack_render_failed"
             con = connect_db()
             execute(con, "UPDATE jobs SET state='FAILED',error=%s,updated_at=%s WHERE id=%s AND state='RENDER_SUBMITTED'",
                     (detail, now, job["id"]))
@@ -314,7 +314,7 @@ def poll_submitted_render():
         else:
             print("render_poll id=%s provider_status=%s" % (job["id"], status or "unknown"), flush=True)
     except Exception as exc:
-        print("render_poll_error id=%s error=%s" % (job["id"], str(exc)[:180]), flush=True)
+        print("render_poll_error id=%s type=%s" % (job["id"], type(exc).__name__), flush=True)
 
 def recover_interrupted_bootstrap_jobs():
     """Recover only diagnostic jobs interrupted before a provider render ID was assigned."""
@@ -382,7 +382,7 @@ def background_queue_worker():
         try:
             poll_submitted_render()
         except Exception as exc:
-            print("render_poll_worker_error=%s" % str(exc)[:180], flush=True)
+            print("render_poll_worker_error type=%s" % type(exc).__name__, flush=True)
         token = os.environ.get("IA10_BRIDGE_TOKEN", "")
         if not token:
             continue
@@ -398,12 +398,12 @@ def background_queue_worker():
         except urllib.error.HTTPError as exc:
             # Preserve provider error details for diagnosis without logging credentials.
             try:
-                detail = exc.read(1200).decode("utf-8", "replace")
+                detail = "provider_rejected_request"
             except Exception:
                 detail = ""
             print("queue_worker_http_error status=%s detail=%s" % (exc.code, detail[:1200]), flush=True)
         except Exception as exc:
-            print("queue_worker_error=%s" % str(exc)[:200], flush=True)
+            print("queue_worker_error type=%s" % type(exc).__name__, flush=True)
 
 connect_db().close()
 recover_interrupted_bootstrap_jobs()
