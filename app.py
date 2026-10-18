@@ -432,12 +432,17 @@ def background_queue_worker():
                 payload = response.read(1000).decode("utf-8", "replace")
                 print("queue_worker status=%s result=%s" % (response.status, payload), flush=True)
         except urllib.error.HTTPError as exc:
-            # Preserve provider error details for diagnosis without logging credentials.
+            # Log only safe response fields; never log request headers or credentials.
             try:
-                detail = "provider_rejected_request"
+                raw = exc.read(4096).decode("utf-8", "replace")
+                try:
+                    payload = json.loads(raw)
+                except Exception:
+                    payload = {}
+                safe = {k: payload.get(k) for k in ("error", "state", "renderer", "diagnostic_url", "detail") if isinstance(payload, dict) and isinstance(payload.get(k), (str, int, bool))}
+                print("queue_worker_http_error status=%s response=%s" % (exc.code, json.dumps(safe, ensure_ascii=True)[:1200]), flush=True)
             except Exception:
-                detail = ""
-            print("queue_worker_http_error status=%s detail=%s" % (exc.code, detail[:1200]), flush=True)
+                print("queue_worker_http_error status=%s response_parse_failed" % exc.code, flush=True)
         except Exception as exc:
             print("queue_worker_error type=%s" % type(exc).__name__, flush=True)
 
