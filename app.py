@@ -230,7 +230,25 @@ class Handler(BaseHTTPRequestHandler):
                 con.commit(); con.close()
                 return self.send_json(200, {"processed":True,"id":job["id"],"state":"RENDER_SUBMITTED","provider_response":result})
             except urllib.error.HTTPError as exc:
+                # Keep provider diagnostics useful without logging request headers or API keys.
+                provider_hint = ""
+                try:
+                    raw_error = exc.read(4096).decode("utf-8", "replace")
+                    try:
+                        error_json = json.loads(raw_error)
+                        candidates = [error_json.get("message"), error_json.get("error"), error_json.get("status")]
+                        response_obj = error_json.get("response")
+                        if isinstance(response_obj, dict):
+                            candidates.extend([response_obj.get("message"), response_obj.get("error")])
+                        provider_hint = " ".join(str(v) for v in candidates if isinstance(v, (str, int)) and str(v).strip())
+                    except Exception:
+                        provider_hint = ""
+                    provider_hint = "".join(ch for ch in provider_hint if ch.isalnum() or ch in " ._:-")[:160].strip()
+                except Exception:
+                    provider_hint = ""
                 detail = "provider_http_%s" % exc.code
+                if provider_hint:
+                    detail += ":" + provider_hint
                 # Only the bootstrap diagnostic may use a local fallback. Never substitute
                 # a placeholder for a real content job or mark it publish-ready.
                 if str(job["title"]).startswith("IA10_BOOTSTRAP_TEST_RENDER"):
