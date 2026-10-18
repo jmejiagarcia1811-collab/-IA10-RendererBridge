@@ -229,7 +229,7 @@ class Handler(BaseHTTPRequestHandler):
                 detail = "provider_http_%s" % exc.code
                 # Only the bootstrap diagnostic may use a local fallback. Never substitute
                 # a placeholder for a real content job or mark it publish-ready.
-                if exc.code == 403 and str(job["title"]).startswith("IA10_BOOTSTRAP_TEST_RENDER"):
+                if str(job["title"]).startswith("IA10_BOOTSTRAP_TEST_RENDER"):
                     try:
                         filename = "ia10-test-%s.mp4" % job["id"]
                         render_local_test_video(filename)
