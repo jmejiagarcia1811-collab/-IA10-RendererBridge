@@ -441,7 +441,7 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send_json(404, {"error":"job_not_found"})
                 title = str(job["title"] or "")
                 # Diagnostic/bootstrap renders can never be promoted to publishable state.
-                if title.startswith("IA10_BOOTSTRAP_TEST_RENDER"):
+                if title.startswith("IA10_BOOTSTRAP_TEST_RENDER") or title.startswith("IA10_LOCAL_RENDER_SMOKE_TEST"):
                     con.close()
                     return self.send_json(409, {"error":"diagnostic_jobs_cannot_be_approved"})
                 if str(job["state"]) != "QC_PENDING_REVIEW":
@@ -873,6 +873,34 @@ def bootstrap_test_render_once():
     finally:
         con.close()
 
+def local_renderer_smoke_test_once():
+    """Queue one non-publishable local-render smoke test when explicitly enabled."""
+    if os.environ.get("IA10_LOCAL_RENDER_SMOKE_TEST", "").strip().lower() not in ("1", "true", "yes"):
+        return
+    title = "IA10_LOCAL_RENDER_SMOKE_TEST_V1"
+    edit = {
+        "timeline": {"tracks": []},
+        "output": {"format": "mp4", "resolution": "1080", "aspectRatio": "9:16"},
+        "local_render": {
+            "headline": "Prueba real del renderizador local",
+            "script": "Esta es una prueba técnica del circuito IA tres punto cero. Comprobamos voz española, vídeo vertical, audio integrado y validación automática antes de cualquier revisión editorial.",
+            "source": "PRUEBA INTERNA; NO ES NOTICIA"
+        }
+    }
+    con = connect_db()
+    try:
+        existing = execute(con, "SELECT id,state FROM jobs WHERE title=%s LIMIT 1", (title,)).fetchone()
+        if existing:
+            print("local_renderer_smoke already_exists id=%s state=%s" % (existing["id"], existing["state"]), flush=True)
+            return
+        now = int(time.time())
+        row = execute(con, "INSERT INTO jobs(title,edit_json,state,created_at,updated_at) VALUES(%s,%s,%s,%s,%s) RETURNING id",
+                      (title, json.dumps(edit), "QUEUED", now, now)).fetchone()
+        con.commit()
+        print("local_renderer_smoke queued id=%s" % row["id"], flush=True)
+    finally:
+        con.close()
+
 def background_queue_worker():
     """Poll the guarded queue while this free web service is awake."""
     interval = max(30, int(os.environ.get("IA10_WORKER_INTERVAL_SECONDS", "60")))
@@ -920,5 +948,6 @@ if __name__ == "__main__":
     check_shotstack_credentials()
     recover_interrupted_bootstrap_jobs()
     bootstrap_test_render_once()
+    local_renderer_smoke_test_once()
     threading.Thread(target=background_queue_worker, name="ia10-queue-worker", daemon=True).start()
     ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()
