@@ -185,7 +185,7 @@ class Handler(BaseHTTPRequestHandler):
                       ELSE 'other'
                     END AS category, COUNT(*) AS count
                     FROM jobs WHERE state IN ('FAILED','QC_FAILED')
-                    GROUP BY category ORDER BY category""").fetchall()
+                    GROUP BY 1 ORDER BY 1""").fetchall()
                 failure_categories = {str(row["category"]): int(row["count"]) for row in failure_rows}
                 row = execute(con, "SELECT state, render_url, error FROM jobs WHERE title LIKE %s ORDER BY id DESC LIMIT 1",
                               ("IA10_BOOTSTRAP_TEST_RENDER%",)).fetchone()
