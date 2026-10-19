@@ -3,6 +3,7 @@
 import json, mimetypes, os, shutil, sqlite3, subprocess, tempfile, threading, time, traceback, urllib.error, urllib.request
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from local_renderer import render_local_content
 
 HOST = "0.0.0.0"
 PORT = int(os.environ.get("PORT", "10000"))
@@ -176,8 +177,7 @@ class Handler(BaseHTTPRequestHandler):
             con = None
             diagnostic_stage = "database_connect"
             try:
-                con = connect_db()
-                db_ok = True
+                con = connect_db()                db_ok = True
                 diagnostic_stage = "queue_counts"
                 rows = execute(con, "SELECT state, COUNT(*) AS count FROM jobs GROUP BY state").fetchall()
                 queue_counts = {str(row["state"]): int(row["count"]) for row in rows}
@@ -335,6 +335,10 @@ class Handler(BaseHTTPRequestHandler):
             filename = path[len("/media/"):]
             if not filename or Path(filename).name != filename or not filename.endswith(".mp4"):
                 return self.send_json(404, {"error":"not_found"})
+            is_diagnostic = filename.startswith("ia10-test-") and filename[len("ia10-test-"):-4].isdigit()
+            is_local_render = filename.startswith("local-") and filename[len("local-"):-4].isdigit()
+            if not (is_diagnostic or is_local_render):
+                return self.send_json(404, {"error":"not_found"})
             media_path = MEDIA_DIR / filename
             try:
                 data = media_path.read_bytes()
@@ -342,10 +346,8 @@ class Handler(BaseHTTPRequestHandler):
                 # This one fixed diagnostic artifact is reproducible on demand because
                 # Render's ephemeral filesystem is not shared across deploy instances.
                 # Regenerate only numbered diagnostic artifacts; never serve arbitrary files.
-                is_diagnostic = (filename.startswith("ia10-test-") and
-                                 filename.endswith(".mp4") and
-                                 filename[len("ia10-test-"):-4].isdigit())
                 if not is_diagnostic:
+                    # Local renders live on ephemeral disk and cannot be reconstructed without the job payload.
                     return self.send_json(404, {"error":"media_not_found"})
                 try:
                     render_local_test_video(filename)
@@ -356,8 +358,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", "video/mp4")
             self.send_header("Content-Length", str(len(data)))
-            self.send_header("Cache-Control", "no-store")
-            self.end_headers()
+            self.send_header("Cache-Control", "no-store")            self.end_headers()
             self.wfile.write(data)
             return
         if path == "/jobs" or path.startswith("/jobs/"):
@@ -536,8 +537,7 @@ class Handler(BaseHTTPRequestHandler):
                         error_json = json.loads(raw_error)
                         candidates = [error_json.get("message"), error_json.get("error"), error_json.get("status")]
                         response_obj = error_json.get("response")
-                        if isinstance(response_obj, dict):
-                            candidates.extend([response_obj.get("message"), response_obj.get("error")])
+                        if isinstance(response_obj, dict):                            candidates.extend([response_obj.get("message"), response_obj.get("error")])
                         provider_hint = " ".join(str(v) for v in candidates if isinstance(v, (str, int)) and str(v).strip())
                     except Exception:
                         provider_hint = ""
@@ -549,6 +549,31 @@ class Handler(BaseHTTPRequestHandler):
                     detail += ":" + provider_hint
                 # Only the bootstrap diagnostic may use a local fallback. Never substitute
                 # a placeholder for a real content job or mark it publish-ready.
+                local_spec = edit_payload.get("local_render") if isinstance(edit_payload, dict) else None
+                local_enabled = os.environ.get("IA10_LOCAL_RENDER_ENABLED", "").strip().lower() in ("1", "true", "yes")
+                if local_enabled and isinstance(local_spec, dict) and not str(job["title"]).startswith("IA10_BOOTSTRAP_TEST_RENDER"):
+                    try:
+                        filename = "local-%s.mp4" % job["id"]
+                        render_local_content(job["title"], local_spec, filename, MEDIA_DIR)
+                        public_url = os.environ.get("IA10_PUBLIC_BASE_URL", "https://ia10-renderer-bridge.onrender.com").rstrip("/") + "/media/" + filename
+                        passed, qc_detail = technical_video_qc(public_url)
+                        now = int(time.time())
+                        new_state = "QC_PENDING_REVIEW" if passed else "QC_FAILED"
+                        con = connect_db()
+                        execute(con, "UPDATE jobs SET state=%s,provider_id=%s,render_url=%s,error=%s,updated_at=%s WHERE id=%s",
+                                (new_state, "local-ffmpeg-edge-tts", public_url,
+                                 ("local_renderer_" + qc_detail)[:180], now, job["id"]))
+                        con.commit(); con.close()
+                        print("local_renderer id=%s state=%s qc=%s" % (job["id"], new_state, qc_detail[:120]), flush=True)
+                        return self.send_json(200 if passed else 502, {
+                            "processed":True,"id":job["id"],"state":new_state,
+                            "renderer":"local-ffmpeg-edge-tts","render_url":public_url,
+                            "technical_qc":qc_detail,
+                            "note":"A narrated local video was rendered. Editorial review is still required; nothing was published."
+                        })
+                    except Exception as local_exc:
+                        print("local_renderer_failed id=%s type=%s detail=%s" % (
+                            job["id"], type(local_exc).__name__, str(local_exc)[:160]), flush=True)
                 if str(job["title"]).startswith("IA10_BOOTSTRAP_TEST_RENDER"):
                     try:
                         filename = "ia10-test-%s.mp4" % job["id"]
@@ -716,8 +741,7 @@ def technical_video_qc(url):
 def poll_submitted_render():
     """Poll one submitted Shotstack render and persist its terminal state."""
     key = os.environ.get("SHOTSTACK_API_KEY", "").strip()
-    if not key:
-        return
+    if not key:        return
     con = connect_db()
     try:
         job = execute(con, "SELECT id,provider_id,state,render_url,title FROM jobs WHERE state='RENDER_SUBMITTED' AND provider_id IS NOT NULL AND provider_id<>'' ORDER BY updated_at LIMIT 1").fetchone()
@@ -849,38 +873,34 @@ def bootstrap_test_render_once():
 def background_queue_worker():
     """Poll the guarded queue while this free web service is awake."""
     interval = max(30, int(os.environ.get("IA10_WORKER_INTERVAL_SECONDS", "60")))
-    print("queue_worker_started interval=%s provider_key_configured=%s auth_token_configured=%s" % (
-        interval, bool(os.environ.get("SHOTSTACK_API_KEY", "").strip()),
+    local_flag = lambda: os.environ.get("IA10_LOCAL_RENDER_ENABLED", "").strip().lower() in ("1", "true", "yes")
+    print("queue_worker_started interval=%s provider_key_configured=%s local_renderer_enabled=%s auth_token_configured=%s" % (
+        interval, bool(os.environ.get("SHOTSTACK_API_KEY", "").strip()), local_flag(),
         bool(os.environ.get("IA10_BRIDGE_TOKEN", ""))), flush=True)
     while True:
         time.sleep(interval)
-        # Never consume queued jobs until a provider key is configured.
-        if not os.environ.get("SHOTSTACK_API_KEY", "").strip():
+        key_configured = bool(os.environ.get("SHOTSTACK_API_KEY", "").strip())
+        if not key_configured and not local_flag():
             continue
-        try:
-            poll_submitted_render()
-        except Exception as exc:
-            print("render_poll_worker_error type=%s" % type(exc).__name__, flush=True)
+        if key_configured:
+            try:
+                poll_submitted_render()
+            except Exception as exc:
+                print("render_poll_worker_error type=%s" % type(exc).__name__, flush=True)
         token = os.environ.get("IA10_BRIDGE_TOKEN", "")
         if not token:
             continue
-        req = urllib.request.Request(
-            "http://127.0.0.1:%s/jobs/process-next" % PORT,
-            data=b"{}",
-            headers={"Content-Type": "application/json", "Authorization": "Bearer " + token},
-            method="POST")
+        req = urllib.request.Request("http://127.0.0.1:%s/jobs/process-next" % PORT, data=b"{}",
+            headers={"Content-Type": "application/json", "Authorization": "Bearer " + token}, method="POST")
         try:
             with urllib.request.urlopen(req, timeout=135) as response:
                 payload = response.read(1000).decode("utf-8", "replace")
                 print("queue_worker status=%s result=%s" % (response.status, payload), flush=True)
         except urllib.error.HTTPError as exc:
-            # Log only safe response fields; never log request headers or credentials.
             try:
                 raw = exc.read(4096).decode("utf-8", "replace")
-                try:
-                    payload = json.loads(raw)
-                except Exception:
-                    payload = {}
+                try: payload = json.loads(raw)
+                except Exception: payload = {}
                 safe = {k: payload.get(k) for k in ("error", "state", "renderer", "diagnostic_url", "detail") if isinstance(payload, dict) and isinstance(payload.get(k), (str, int, bool))}
                 print("queue_worker_http_error status=%s response=%s" % (exc.code, json.dumps(safe, ensure_ascii=True)[:1200]), flush=True)
             except Exception:
