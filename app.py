@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """IA10 renderer bridge with guarded queue. Provider/API secrets are environment-only."""
-import json, mimetypes, os, sqlite3, subprocess, threading, time, traceback, urllib.error, urllib.request
+import json, mimetypes, os, shutil, sqlite3, subprocess, tempfile, threading, time, traceback, urllib.error, urllib.request
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -345,9 +345,36 @@ def technical_video_qc(url):
     try:
         import re, imageio_ffmpeg
         ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
-        proc = subprocess.run([ffmpeg, "-i", url, "-f", "null", "-"],
-                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=120)
-        output = (proc.stderr or b"").decode("utf-8", "replace")
+        # Fetch the provider output first, then decode the local file. Some signed
+        # render URLs/redirects are not handled consistently by static FFmpeg builds.
+        # Never log the URL because it may contain temporary access signatures.
+        with tempfile.NamedTemporaryFile(prefix="ia10-qc-", suffix=".mp4", delete=False) as tmp:
+            local_path = tmp.name
+        try:
+            request = urllib.request.Request(url, headers={"User-Agent": "IA10-Technical-QC/1.0"})
+            with urllib.request.urlopen(request, timeout=45) as response, open(local_path, "wb") as output_file:
+                shutil.copyfileobj(response, output_file)
+            if os.path.getsize(local_path) < 1024:
+                return False, "render_file_too_small"
+            proc = subprocess.run([ffmpeg, "-v", "error", "-i", local_path, "-f", "null", "-"],
+                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=120)
+            output = ((proc.stderr or b"") + (proc.stdout or b"")).decode("utf-8", "replace")
+        except urllib.error.HTTPError as exc:
+            if exc.code == 403:
+                return False, "render_url_http_403"
+            if exc.code == 404:
+                return False, "render_url_http_404"
+            if exc.code >= 500:
+                return False, "render_url_http_5xx"
+            return False, "render_url_http_error"
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            print("technical_qc_download_error type=%s" % type(exc).__name__, flush=True)
+            return False, "render_url_download_failed"
+        finally:
+            try:
+                os.unlink(local_path)
+            except OSError:
+                pass
         duration_match = re.search(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)", output)
         duration = (int(duration_match.group(1)) * 3600 + int(duration_match.group(2)) * 60 +
                     float(duration_match.group(3))) if duration_match else 0
