@@ -356,7 +356,7 @@ def technical_video_qc(url):
                 shutil.copyfileobj(response, output_file)
             if os.path.getsize(local_path) < 1024:
                 return False, "render_file_too_small"
-            proc = subprocess.run([ffmpeg, "-v", "error", "-i", local_path, "-f", "null", "-"],
+            proc = subprocess.run([ffmpeg, "-v", "info", "-i", local_path, "-f", "null", "-"],
                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=120)
             output = ((proc.stderr or b"") + (proc.stdout or b"")).decode("utf-8", "replace")
         except urllib.error.HTTPError as exc:
