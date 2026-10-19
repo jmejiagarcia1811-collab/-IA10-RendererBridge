@@ -352,7 +352,7 @@ class Handler(BaseHTTPRequestHandler):
                     "reviewed_at":reviewed_at,
                 }
                 new_state = "READY_TO_PUBLISH" if decision == "approve" else "QC_FAILED"
-                stored_error = str(job.get("error") or "") if decision == "approve" else reason
+                stored_error = str(job["error"] or "") if decision == "approve" else reason
                 cur = execute(con,
                     "UPDATE jobs SET state=%s,error=%s,qc_review_json=%s,updated_at=%s WHERE id=%s AND state='QC_PENDING_REVIEW'",
                     (new_state,stored_error,json.dumps(review,separators=(",",":")),reviewed_at,int(raw_id)))
