@@ -163,16 +163,18 @@ class Handler(BaseHTTPRequestHandler):
         if path in ("/health", "/"):
             db_mode = "postgres" if DATABASE_URL else "sqlite-local-ephemeral"
             db_ok = False
+            diagnostics_ok = False
             queue_counts = {}
             failure_categories = {}
             test_render = {"state": "unknown", "render_url_available": False, "error": None}
+            con = None
             try:
                 con = connect_db()
                 db_ok = True
                 rows = execute(con, "SELECT state, COUNT(*) AS count FROM jobs GROUP BY state").fetchall()
                 queue_counts = {str(row["state"]): int(row["count"]) for row in rows}
-                # Public health diagnostics expose only coarse failure categories, never job titles,
-                # provider IDs, render URLs, full error messages, or credentials.
+                # Public diagnostics expose coarse categories only, never job titles,
+                # provider IDs, render URLs, raw errors, or credentials.
                 failure_rows = execute(con, """SELECT
                     CASE
                       WHEN lower(COALESCE(error,'')) LIKE '%provider_http_403%' OR lower(COALESCE(error,'')) LIKE '%sandbox key rejected%' THEN 'provider_auth_or_permission'
@@ -192,16 +194,29 @@ class Handler(BaseHTTPRequestHandler):
                 if row:
                     test_render = {"state": str(row["state"]), "render_url_available": bool(row["render_url"]),
                                    "error": str(row["error"] or "")[:180] or None}
-                con.close()
+                diagnostics_ok = True
             except Exception as exc:
-                test_render["error"] = "database_check_failed"
+                # Keep connectivity and diagnostic-query health distinct.
+                if db_ok:
+                    test_render = {"state": "unknown", "render_url_available": False,
+                                   "error": "diagnostic_query_failed"}
+                else:
+                    test_render["error"] = "database_connection_failed"
+                print("health_diagnostics_failed type=%s" % type(exc).__name__, flush=True)
+            finally:
+                if con is not None:
+                    try:
+                        con.close()
+                    except Exception:
+                        pass
             self.send_json(200 if db_ok else 503, {
               "service":"ia10-renderer-bridge", "status":"alive" if db_ok else "degraded",
               "database_mode":db_mode, "database_ok":db_ok,
               "render_configured":bool(os.environ.get("SHOTSTACK_API_KEY")),
               "auth_configured":bool(os.environ.get("IA10_BRIDGE_TOKEN")),
               "bootstrap_test_enabled":os.environ.get("IA10_BOOTSTRAP_TEST_RENDER", "").strip().lower() in ("1", "true", "yes"),
-              "queue_counts":queue_counts, "failure_categories":failure_categories, "bootstrap_test_render":test_render,
+              "queue_counts":queue_counts, "failure_categories":failure_categories, "diagnostics_ok":diagnostics_ok,
+              "bootstrap_test_render":test_render,
               "note":"Health does not prove provider validity, video QC, or publication."
             })
             return
