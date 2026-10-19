@@ -168,13 +168,16 @@ class Handler(BaseHTTPRequestHandler):
             failure_categories = {}
             test_render = {"state": "unknown", "render_url_available": False, "error": None}
             con = None
+            diagnostic_stage = "database_connect"
             try:
                 con = connect_db()
                 db_ok = True
+                diagnostic_stage = "queue_counts"
                 rows = execute(con, "SELECT state, COUNT(*) AS count FROM jobs GROUP BY state").fetchall()
                 queue_counts = {str(row["state"]): int(row["count"]) for row in rows}
                 # Public diagnostics expose coarse categories only, never job titles,
                 # provider IDs, render URLs, raw errors, or credentials.
+                diagnostic_stage = "failure_categories"
                 failure_rows = execute(con, """SELECT
                     CASE
                       WHEN lower(COALESCE(error,'')) LIKE '%provider_http_403%' OR lower(COALESCE(error,'')) LIKE '%sandbox key rejected%' THEN 'provider_auth_or_permission'
@@ -189,6 +192,7 @@ class Handler(BaseHTTPRequestHandler):
                     FROM jobs WHERE state IN ('FAILED','QC_FAILED')
                     GROUP BY 1 ORDER BY 1""").fetchall()
                 failure_categories = {str(row["category"]): int(row["count"]) for row in failure_rows}
+                diagnostic_stage = "bootstrap_status"
                 row = execute(con, "SELECT state, render_url, error FROM jobs WHERE title LIKE %s ORDER BY id DESC LIMIT 1",
                               ("IA10_BOOTSTRAP_TEST_RENDER%",)).fetchone()
                 if row:
@@ -202,7 +206,7 @@ class Handler(BaseHTTPRequestHandler):
                                    "error": "diagnostic_query_failed"}
                 else:
                     test_render["error"] = "database_connection_failed"
-                print("health_diagnostics_failed type=%s" % type(exc).__name__, flush=True)
+                print("health_diagnostics_failed stage=%s type=%s" % (diagnostic_stage, type(exc).__name__), flush=True)
             finally:
                 if con is not None:
                     try:
