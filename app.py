@@ -520,8 +520,40 @@ class Handler(BaseHTTPRequestHandler):
                         db_fingerprint = hashlib.sha256(DATABASE_URL.encode("utf-8")).hexdigest()[:12]
                     except Exception:
                         db_fingerprint = "postgres"
-                print("queue_probe db=%s queued_count_sample=%s first_job_id=%s" % (
-                    db_fingerprint, len(queued), str(queued[0]["id"]) if queued else "none"), flush=True)
+                state_rows = execute(con, "SELECT state, COUNT(*) AS count FROM jobs GROUP BY state").fetchall()
+                state_counts = {str(row["state"]): int(row["count"]) for row in state_rows}
+                failed_rows = execute(con, "SELECT state,error FROM jobs WHERE state IN ('FAILED','QC_FAILED')").fetchall()
+                failure_counts = {}
+                for failed_row in failed_rows:
+                    err = str(failed_row["error"] or "").lower()
+                    if "sandbox key rejected" in err or "shotstack_sandbox_key_rejected" in err:
+                        category = "provider_sandbox_key_rejected"
+                    elif "provider_http_403" in err or "provider_http_401" in err:
+                        category = "provider_auth_or_permission"
+                    elif "invalid_job_edit_json" in err:
+                        category = "invalid_job_edit_json"
+                    elif "invalid_job_edit_schema" in err:
+                        category = "invalid_job_edit_schema"
+                    elif "render_error_" in err:
+                        category = "internal_render_error"
+                    elif "local_renderer_failed" in err:
+                        category = "local_renderer_failed"
+                    elif "audio_stream_missing" in err:
+                        category = "qc_audio_missing"
+                    elif "render_url_" in err or "download_failed" in err:
+                        category = "qc_render_url"
+                    elif "decode" in err or "invalid_or_incomplete" in err:
+                        category = "qc_decode"
+                    elif "duration_out_of_range" in err or "not_portrait" in err or "dimensions_missing" in err:
+                        category = "qc_format"
+                    elif not err:
+                        category = "no_error_detail"
+                    else:
+                        category = "other"
+                    failure_counts[category] = failure_counts.get(category, 0) + 1
+                print("queue_probe db=%s queued_count_sample=%s first_job_id=%s states=%s failures=%s" % (
+                    db_fingerprint, len(queued), str(queued[0]["id"]) if queued else "none",
+                    json.dumps(state_counts, sort_keys=True), json.dumps(failure_counts, sort_keys=True)), flush=True)
                 job = queued[0] if queued else None
                 if not job:
                     con.close()
