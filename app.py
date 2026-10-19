@@ -278,8 +278,8 @@ class Handler(BaseHTTPRequestHandler):
                         db_fingerprint = hashlib.sha256(DATABASE_URL.encode("utf-8")).hexdigest()[:12]
                     except Exception:
                         db_fingerprint = "postgres"
-                print("queue_probe db=%s queued_count_sample=%s first=%s" % (
-                    db_fingerprint, len(queued), str(dict(queued[0]) if queued else None)[:240]), flush=True)
+                print("queue_probe db=%s queued_count_sample=%s first_job_id=%s" % (
+                    db_fingerprint, len(queued), str(queued[0]["id"]) if queued else "none"), flush=True)
                 job = queued[0] if queued else None
                 if not job:
                     con.close()
