@@ -229,6 +229,39 @@ class Handler(BaseHTTPRequestHandler):
               "note":"Health does not prove provider validity, video QC, or publication."
             })
             return
+        if path == "/queue-summary" and self.command == "GET":
+            # Public, read-only queue overview: identifiers and coarse categories only.
+            # Never expose titles, raw errors, provider IDs, signed URLs, or credentials.
+            try:
+                con = connect_db()
+                rows = execute(con, """SELECT id, state, updated_at,
+                    CASE
+                      WHEN lower(COALESCE(error,'')) LIKE '%provider_http_403%' OR lower(COALESCE(error,'')) LIKE '%sandbox key rejected%' THEN 'provider_auth_or_permission'
+                      WHEN lower(COALESCE(error,'')) LIKE '%provider_http_%' OR lower(COALESCE(error,'')) LIKE '%shotstack_render_failed%' THEN 'provider_render_error'
+                      WHEN lower(COALESCE(error,'')) LIKE '%audio_stream_missing%' THEN 'qc_audio_missing'
+                      WHEN lower(COALESCE(error,'')) LIKE '%render_url_%' OR lower(COALESCE(error,'')) LIKE '%download_failed%' THEN 'qc_render_url'
+                      WHEN lower(COALESCE(error,'')) LIKE '%decode%' OR lower(COALESCE(error,'')) LIKE '%invalid_or_incomplete%' THEN 'qc_decode'
+                      WHEN lower(COALESCE(error,'')) LIKE '%duration_out_of_range%' OR lower(COALESCE(error,'')) LIKE '%not_portrait%' OR lower(COALESCE(error,'')) LIKE '%dimensions_missing%' THEN 'qc_format'
+                      WHEN COALESCE(error,'') = '' THEN 'no_error_detail'
+                      ELSE 'other'
+                    END AS category,
+                    (render_url IS NOT NULL AND render_url <> '') AS render_url_available
+                    FROM jobs
+                    WHERE state IN ('FAILED','QC_FAILED','QC_PENDING_REVIEW')
+                    ORDER BY updated_at DESC, id DESC LIMIT 100""").fetchall()
+                con.close()
+                jobs = [{"id":int(row["id"]), "state":str(row["state"]),
+                         "updated_at":int(row["updated_at"]), "category":str(row["category"]),
+                         "render_url_available":bool(row["render_url_available"])} for row in rows]
+                counts = {}
+                for job in jobs:
+                    key = job["state"] + ":" + job["category"]
+                    counts[key] = counts.get(key, 0) + 1
+                return self.send_json(200, {"read_only":True, "jobs":jobs, "counts":counts,
+                                            "note":"No job state changed. This endpoint exposes only job IDs, states, coarse categories and render-URL availability."})
+            except Exception:
+                return self.send_json(503, {"error":"queue_summary_unavailable"})
+
         if path == "/queue-diagnostics" and self.command == "GET":
             # Authenticated, read-only diagnostics. Never return raw errors, titles,
             # provider IDs, render URLs, edit payloads, or credentials.
