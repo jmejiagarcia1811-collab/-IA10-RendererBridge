@@ -378,13 +378,24 @@ def technical_video_qc(url):
                     "invalid data found", "could not find codec parameters",
                     "protocol not found", "operation not permitted", "network is unreachable"
                 )
-                for line in output.splitlines():
+                output_lines = output.splitlines()
+                for line in output_lines:
                     ll = line.lower()
                     if any(marker in ll for marker in diagnostic_markers):
                         line = re.sub(r"https?://[^\\s'\"<>]+", "[URL_REDACTED]", line)
                         line = re.sub(r"(?i)(token|signature|key)=([^&\\s]+)", r"\\1=[REDACTED]", line)
                         safe_lines.append(line[:180])
-                print("technical_qc_fetch_detail " + " | ".join(safe_lines[-4:])[:500], flush=True)
+                # Some FFmpeg builds phrase fetch failures differently. If no known marker
+                # matched, emit only sanitized lines that look like errors, never the signed URL.
+                if not safe_lines:
+                    fallback_markers = ("error", "failed", "denied", "refused", "timeout", "timed out",
+                                        "invalid", "http", "opening", "server", "tls", "ssl", "network")
+                    for line in output_lines:
+                        if any(marker in line.lower() for marker in fallback_markers):
+                            line = re.sub(r"https?://[^\\s'\"<>]+", "[URL_REDACTED]", line)
+                            line = re.sub(r"(?i)(token|signature|key)=([^&\\s]+)", r"\\1=[REDACTED]", line)
+                            safe_lines.append(line[:180])
+                print("technical_qc_fetch_detail " + " | ".join(safe_lines[-5:])[:600], flush=True)
                 return False, "render_url_fetch_failed"
             if "moov atom not found" in low or "invalid data found" in low or "could not find codec parameters" in low:
                 return False, "render_file_invalid_or_incomplete"
