@@ -411,7 +411,8 @@ def bootstrap_test_render_once():
             existing_error = str(existing.get("error") or "")
             if existing["state"] == "FAILED" and (
                 "render_error_KeyError" in existing_error or
-                "shotstack_sandbox_key_rejected" in existing_error
+                "shotstack_sandbox_key_rejected" in existing_error or
+                "Shotstack Sandbox request rejected" in existing_error
             ):
                 now = int(time.time())
                 execute(con, "UPDATE jobs SET state='QUEUED',error=NULL,render_url=NULL,provider_id=NULL,updated_at=%s WHERE id=%s",
