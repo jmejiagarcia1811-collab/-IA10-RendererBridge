@@ -320,6 +320,41 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         print("%s - %s"%(self.log_date_time_string(),fmt%args),flush=True)
 
+def technical_video_qc(url):
+    """Decode a provider MP4 and check basic technical properties; never approves editorial content."""
+    if not isinstance(url, str) or not url.startswith("https://"):
+        return False, "missing_or_non_https_render_url"
+    try:
+        import re, imageio_ffmpeg
+        ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
+        proc = subprocess.run([ffmpeg, "-i", url, "-f", "null", "-"],
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=120)
+        output = (proc.stderr or b"").decode("utf-8", "replace")
+        duration_match = re.search(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)", output)
+        duration = (int(duration_match.group(1)) * 3600 + int(duration_match.group(2)) * 60 +
+                    float(duration_match.group(3))) if duration_match else 0
+        dimensions = None
+        for line in output.splitlines():
+            if "Video:" in line:
+                match = re.search(r"(\d{2,5})x(\d{2,5})", line)
+                if match:
+                    dimensions = (int(match.group(1)), int(match.group(2)))
+                    break
+        if proc.returncode != 0:
+            return False, "ffmpeg_decode_failed"
+        if not dimensions:
+            return False, "video_stream_or_dimensions_missing"
+        width, height = dimensions
+        if height <= width:
+            return False, "not_portrait"
+        if not 4 <= duration <= 15:
+            return False, "duration_out_of_range"
+        return True, "decoded_portrait_%sx%s_duration_%.2fs" % (width, height, duration)
+    except subprocess.TimeoutExpired:
+        return False, "technical_qc_timeout"
+    except Exception as exc:
+        return False, "technical_qc_error_" + type(exc).__name__
+
 def poll_submitted_render():
     """Poll one submitted Shotstack render and persist its terminal state."""
     key = os.environ.get("SHOTSTACK_API_KEY", "").strip()
@@ -327,10 +362,19 @@ def poll_submitted_render():
         return
     con = connect_db()
     try:
-        job = execute(con, "SELECT id,provider_id FROM jobs WHERE state='RENDER_SUBMITTED' AND provider_id IS NOT NULL AND provider_id<>'' ORDER BY id LIMIT 1").fetchone()
+        job = execute(con, "SELECT id,provider_id,state,render_url,title FROM jobs WHERE (state='RENDER_SUBMITTED' AND provider_id IS NOT NULL AND provider_id<>'') OR (state='RENDERED' AND title LIKE 'IA10_BOOTSTRAP_TEST_RENDER%' AND render_url IS NOT NULL AND render_url<>'') ORDER BY updated_at LIMIT 1").fetchone()
     finally:
         con.close()
     if not job:
+        return
+    if str(job.get("state", "")) == "RENDERED":
+        passed, detail = technical_video_qc(str(job.get("render_url") or ""))
+        new_state = "QC_PENDING_REVIEW" if passed else "QC_FAILED"
+        con = connect_db()
+        execute(con, "UPDATE jobs SET state=%s,error=%s,updated_at=%s WHERE id=%s AND state='RENDERED'",
+                (new_state, detail[:180], int(time.time()), job["id"]))
+        con.commit(); con.close()
+        print("technical_qc id=%s state=%s result=%s" % (job["id"], new_state, detail[:120]), flush=True)
         return
     base = os.environ.get("SHOTSTACK_API_BASE", "https://api.shotstack.io/edit/stage").rstrip("/")
     req = urllib.request.Request(base + "/render/" + str(job["provider_id"]),
@@ -342,11 +386,14 @@ def poll_submitted_render():
         status = str(data.get("status", "")).lower()
         now = int(time.time())
         if status in ("done", "completed", "complete"):
+            render_url = data.get("url") or data.get("output") or ""
+            passed, detail = technical_video_qc(str(render_url))
+            new_state = "QC_PENDING_REVIEW" if passed else "QC_FAILED"
             con = connect_db()
-            execute(con, "UPDATE jobs SET state='RENDERED',render_url=%s,updated_at=%s WHERE id=%s AND state='RENDER_SUBMITTED'",
-                    (str(data.get("url") or data.get("output") or "")[:2000], now, job["id"]))
+            execute(con, "UPDATE jobs SET state=%s,render_url=%s,error=%s,updated_at=%s WHERE id=%s AND state='RENDER_SUBMITTED'",
+                    (new_state, str(render_url)[:2000], detail[:180], now, job["id"]))
             con.commit(); con.close()
-            print("render_poll id=%s state=RENDERED" % job["id"], flush=True)
+            print("render_poll id=%s state=%s result=%s" % (job["id"], new_state, detail[:120]), flush=True)
         elif status in ("failed", "error"):
             detail = "shotstack_render_failed"
             con = connect_db()
