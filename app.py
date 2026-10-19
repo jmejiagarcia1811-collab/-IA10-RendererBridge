@@ -263,7 +263,7 @@ class Handler(BaseHTTPRequestHandler):
                   (title.strip()[:200], json.dumps(edit), "QUEUED", now, now)).fetchone()
                 jid = row["id"]
                 con.commit(); con.close()
-                return self.send_json(201, {"id":jid,"state":"QUEUED","note":"Queued; not yet rendered or published."})
+                return self.send_json(202 if path == "/render" else 201, {"id":jid,"state":"QUEUED","note":"Queued for the background worker; not yet rendered or published."})
             except Exception:
                 return self.send_json(503, {"error":"database_unavailable"})
 
@@ -350,17 +350,6 @@ class Handler(BaseHTTPRequestHandler):
                 pass
             return self.send_json(502, {"error":"render_failed","id":job["id"],"detail":detail})
 
-        if path == "/render":
-            edit = body.get("edit") if isinstance(body,dict) else None
-            if not isinstance(edit,dict) or not isinstance(edit.get("timeline"),dict) or not isinstance(edit.get("output"),dict):
-                return self.send_json(400, {"error":"expected_shotstack_edit_with_timeline_and_output"})
-            try:
-                result = submit_render(edit)
-                return self.send_json(200, {"submitted":True,"provider_response":result})
-            except urllib.error.HTTPError as exc:
-                return self.send_json(502, {"error":"shotstack_rejected_request","provider_status":exc.code,"detail":"provider_rejected_request"})
-            except Exception as exc:
-                return self.send_json(503 if str(exc)=="renderer_not_configured" else 502, {"error":"render_failed","detail":"render_error_" + type(exc).__name__})
         self.send_json(404, {"error":"not_found"})
 
     def do_HEAD(self):
