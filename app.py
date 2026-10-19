@@ -168,6 +168,26 @@ class Handler(BaseHTTPRequestHandler):
               "note":"Health does not prove provider validity, video QC, or publication."
             })
             return
+        if path == "/bootstrap-test-video" and self.command == "GET":
+            # Public, read-only access to the latest diagnostic render only.
+            # Never expose customer jobs or credentials through this convenience route.
+            try:
+                con = connect_db()
+                row = execute(con,
+                    "SELECT state,render_url FROM jobs WHERE title LIKE %s ORDER BY id DESC LIMIT 1",
+                    ("IA10_BOOTSTRAP_TEST_RENDER%",)).fetchone()
+                con.close()
+                render_url = str(row["render_url"] or "") if row else ""
+                if not row or str(row["state"]) != "QC_PENDING_REVIEW" or not render_url.startswith("https://"):
+                    return self.send_json(404, {"error":"diagnostic_video_not_ready"})
+                self.send_response(302)
+                self.send_header("Location", render_url)
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                return
+            except Exception:
+                return self.send_json(503, {"error":"diagnostic_video_unavailable"})
+
         if path.startswith("/media/") and self.command == "GET":
             filename = path[len("/media/"):]
             if not filename or Path(filename).name != filename or not filename.endswith(".mp4"):
