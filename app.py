@@ -180,12 +180,12 @@ class Handler(BaseHTTPRequestHandler):
                 diagnostic_stage = "failure_categories"
                 failure_rows = execute(con, """SELECT
                     CASE
-                      WHEN lower(COALESCE(to_jsonb(j)->>'error','')) LIKE '%provider_http_403%' OR lower(COALESCE(to_jsonb(j)->>'error','')) LIKE '%sandbox key rejected%' THEN 'provider_auth_or_permission'
-                      WHEN lower(COALESCE(to_jsonb(j)->>'error','')) LIKE '%provider_http_%' OR lower(COALESCE(to_jsonb(j)->>'error','')) LIKE '%shotstack_render_failed%' THEN 'provider_render_error'
-                      WHEN lower(COALESCE(to_jsonb(j)->>'error','')) LIKE '%audio_stream_missing%' THEN 'qc_audio_missing'
-                      WHEN lower(COALESCE(to_jsonb(j)->>'error','')) LIKE '%render_url_%' OR lower(COALESCE(to_jsonb(j)->>'error','')) LIKE '%download_failed%' THEN 'qc_render_url'
-                      WHEN lower(COALESCE(to_jsonb(j)->>'error','')) LIKE '%decode%' OR lower(COALESCE(to_jsonb(j)->>'error','')) LIKE '%invalid_or_incomplete%' THEN 'qc_decode'
-                      WHEN lower(COALESCE(to_jsonb(j)->>'error','')) LIKE '%duration_out_of_range%' OR lower(COALESCE(to_jsonb(j)->>'error','')) LIKE '%not_portrait%' OR lower(COALESCE(to_jsonb(j)->>'error','')) LIKE '%dimensions_missing%' THEN 'qc_format'
+                      WHEN POSITION('provider_http_403' IN lower(COALESCE(to_jsonb(j)->>'error',''))) > 0 OR POSITION('sandbox key rejected' IN lower(COALESCE(to_jsonb(j)->>'error',''))) > 0 THEN 'provider_auth_or_permission'
+                      WHEN POSITION('provider_http_' IN lower(COALESCE(to_jsonb(j)->>'error',''))) > 0 OR POSITION('shotstack_render_failed' IN lower(COALESCE(to_jsonb(j)->>'error',''))) > 0 THEN 'provider_render_error'
+                      WHEN POSITION('audio_stream_missing' IN lower(COALESCE(to_jsonb(j)->>'error',''))) > 0 THEN 'qc_audio_missing'
+                      WHEN POSITION('render_url_' IN lower(COALESCE(to_jsonb(j)->>'error',''))) > 0 OR POSITION('download_failed' IN lower(COALESCE(to_jsonb(j)->>'error',''))) > 0 THEN 'qc_render_url'
+                      WHEN POSITION('decode' IN lower(COALESCE(to_jsonb(j)->>'error',''))) > 0 OR POSITION('invalid_or_incomplete' IN lower(COALESCE(to_jsonb(j)->>'error',''))) > 0 THEN 'qc_decode'
+                      WHEN POSITION('duration_out_of_range' IN lower(COALESCE(to_jsonb(j)->>'error',''))) > 0 OR POSITION('not_portrait' IN lower(COALESCE(to_jsonb(j)->>'error',''))) > 0 OR POSITION('dimensions_missing' IN lower(COALESCE(to_jsonb(j)->>'error',''))) > 0 THEN 'qc_format'
                       WHEN COALESCE(to_jsonb(j)->>'error','') = '' THEN 'no_error_detail'
                       ELSE 'other'
                     END AS category, COUNT(*) AS count
