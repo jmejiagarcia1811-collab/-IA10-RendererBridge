@@ -180,20 +180,24 @@ class Handler(BaseHTTPRequestHandler):
                 diagnostic_stage = "failure_categories"
                 failure_rows = execute(con, """SELECT
                     CASE
-                      WHEN lower(COALESCE(error,'')) LIKE '%provider_http_403%' OR lower(COALESCE(error,'')) LIKE '%sandbox key rejected%' THEN 'provider_auth_or_permission'
-                      WHEN lower(COALESCE(error,'')) LIKE '%provider_http_%' OR lower(COALESCE(error,'')) LIKE '%shotstack_render_failed%' THEN 'provider_render_error'
-                      WHEN lower(COALESCE(error,'')) LIKE '%audio_stream_missing%' THEN 'qc_audio_missing'
-                      WHEN lower(COALESCE(error,'')) LIKE '%render_url_%' OR lower(COALESCE(error,'')) LIKE '%download_failed%' THEN 'qc_render_url'
-                      WHEN lower(COALESCE(error,'')) LIKE '%decode%' OR lower(COALESCE(error,'')) LIKE '%invalid_or_incomplete%' THEN 'qc_decode'
-                      WHEN lower(COALESCE(error,'')) LIKE '%duration_out_of_range%' OR lower(COALESCE(error,'')) LIKE '%not_portrait%' OR lower(COALESCE(error,'')) LIKE '%dimensions_missing%' THEN 'qc_format'
-                      WHEN COALESCE(error,'') = '' THEN 'no_error_detail'
+                      WHEN lower(COALESCE(to_jsonb(j)->>'error','')) LIKE '%provider_http_403%' OR lower(COALESCE(to_jsonb(j)->>'error','')) LIKE '%sandbox key rejected%' THEN 'provider_auth_or_permission'
+                      WHEN lower(COALESCE(to_jsonb(j)->>'error','')) LIKE '%provider_http_%' OR lower(COALESCE(to_jsonb(j)->>'error','')) LIKE '%shotstack_render_failed%' THEN 'provider_render_error'
+                      WHEN lower(COALESCE(to_jsonb(j)->>'error','')) LIKE '%audio_stream_missing%' THEN 'qc_audio_missing'
+                      WHEN lower(COALESCE(to_jsonb(j)->>'error','')) LIKE '%render_url_%' OR lower(COALESCE(to_jsonb(j)->>'error','')) LIKE '%download_failed%' THEN 'qc_render_url'
+                      WHEN lower(COALESCE(to_jsonb(j)->>'error','')) LIKE '%decode%' OR lower(COALESCE(to_jsonb(j)->>'error','')) LIKE '%invalid_or_incomplete%' THEN 'qc_decode'
+                      WHEN lower(COALESCE(to_jsonb(j)->>'error','')) LIKE '%duration_out_of_range%' OR lower(COALESCE(to_jsonb(j)->>'error','')) LIKE '%not_portrait%' OR lower(COALESCE(to_jsonb(j)->>'error','')) LIKE '%dimensions_missing%' THEN 'qc_format'
+                      WHEN COALESCE(to_jsonb(j)->>'error','') = '' THEN 'no_error_detail'
                       ELSE 'other'
                     END AS category, COUNT(*) AS count
-                    FROM jobs WHERE state IN ('FAILED','QC_FAILED')
+                    FROM jobs j WHERE to_jsonb(j)->>'state' IN ('FAILED','QC_FAILED')
                     GROUP BY 1 ORDER BY 1""").fetchall()
                 failure_categories = {str(row["category"]): int(row["count"]) for row in failure_rows}
                 diagnostic_stage = "bootstrap_status"
-                row = execute(con, "SELECT state, render_url, error FROM jobs WHERE title LIKE %s ORDER BY id DESC LIMIT 1",
+                row = execute(con, """SELECT to_jsonb(j)->>'state' AS state,
+                                      to_jsonb(j)->>'render_url' AS render_url,
+                                      to_jsonb(j)->>'error' AS error
+                                      FROM jobs j WHERE COALESCE(to_jsonb(j)->>'title','') LIKE %s
+                                      ORDER BY (to_jsonb(j)->>'id')::bigint DESC LIMIT 1""",
                               ("IA10_BOOTSTRAP_TEST_RENDER%",)).fetchone()
                 if row:
                     test_render = {"state": str(row["state"]), "render_url_available": bool(row["render_url"]),
