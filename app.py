@@ -368,6 +368,16 @@ def technical_video_qc(url):
             if "http error 5" in low or "server returned 5" in low:
                 return False, "render_url_http_5xx"
             if "connection refused" in low or "connection timed out" in low or "tls" in low or "https" in low and "error" in low:
+                # Keep a few sanitized FFmpeg error lines for diagnosis; strip signed URLs/tokens.
+                import re
+                safe_lines = []
+                for line in output.splitlines():
+                    ll = line.lower()
+                    if any(word in ll for word in ("error", "failed", "timed out", "tls", "connection", "http")):
+                        line = re.sub(r"https?://[^\\s'\"<>]+", "[URL_REDACTED]", line)
+                        line = re.sub(r"(?i)(token|signature|key)=([^&\\s]+)", r"\\1=[REDACTED]", line)
+                        safe_lines.append(line[:180])
+                print("technical_qc_fetch_detail " + " | ".join(safe_lines[-4:])[:500], flush=True)
                 return False, "render_url_fetch_failed"
             if "moov atom not found" in low or "invalid data found" in low or "could not find codec parameters" in low:
                 return False, "render_file_invalid_or_incomplete"
