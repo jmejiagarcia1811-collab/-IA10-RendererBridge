@@ -551,8 +551,9 @@ def bootstrap_test_render_once():
             "tracks": [{
                 "clips": [{
                     "asset": {
-                        "type": "image",
-                        "src": "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1080&q=80"
+                        "type": "video",
+                        "src": "https://samplelib.com/lib/preview/mp4/sample-5s.mp4",
+                        "volume": 0
                     },
                     "start": 0,
                     "length": 5,
