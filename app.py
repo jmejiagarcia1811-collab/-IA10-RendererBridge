@@ -217,15 +217,27 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(data)
             return
-        if path == "/jobs":
+        if path == "/jobs" or path.startswith("/jobs/"):
             if not self.authorized():
                 return self.send_json(401, {"error":"unauthorized"})
             try:
                 con = connect_db()
-                jobs = [dict(r) for r in execute(con,
-                  "SELECT id,title,state,created_at,updated_at,provider_id,render_url,error FROM jobs ORDER BY id DESC LIMIT 100")]
+                if path == "/jobs":
+                    jobs = [dict(r) for r in execute(con,
+                      "SELECT id,title,state,created_at,updated_at,provider_id,render_url,error FROM jobs ORDER BY id DESC LIMIT 100")]
+                    con.close()
+                    return self.send_json(200, {"jobs":jobs})
+                raw_id = path[len("/jobs/"):]
+                if not raw_id.isdigit():
+                    con.close()
+                    return self.send_json(400, {"error":"invalid_job_id"})
+                job = execute(con,
+                  "SELECT id,title,state,created_at,updated_at,provider_id,render_url,error FROM jobs WHERE id=%s",
+                  (int(raw_id),)).fetchone()
                 con.close()
-                return self.send_json(200, {"jobs":jobs})
+                if not job:
+                    return self.send_json(404, {"error":"job_not_found"})
+                return self.send_json(200, {"job":dict(job)})
             except Exception:
                 return self.send_json(503, {"error":"database_unavailable"})
         self.send_json(404, {"error":"not_found"})
@@ -239,8 +251,9 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             return self.send_json(400, {"error":"invalid_json_or_body_size"})
 
-        if path == "/jobs":
-            title, edit = body.get("title"), body.get("edit")
+        if path in ("/jobs", "/render"):
+            # /render is the documented compatibility endpoint; both routes enqueue safely.
+            title, edit = body.get("title", "API_RENDER_REQUEST"), body.get("edit")
             if not isinstance(title, str) or not title.strip() or not isinstance(edit, dict) or not isinstance(edit.get("timeline"), dict) or not isinstance(edit.get("output"), dict):
                 return self.send_json(400, {"error":"title_and_shotstack_edit_required"})
             now = int(time.time())
@@ -278,6 +291,8 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 result = submit_render(json.loads(job["edit_json"]))
                 provider_id = (result.get("response") or {}).get("id") or (result.get("data") or {}).get("id") or ""
+                if not isinstance(provider_id, str) or not provider_id.strip():
+                    raise RuntimeError("provider_response_missing_render_id")
                 con = connect_db()
                 execute(con, "UPDATE jobs SET state='RENDER_SUBMITTED',provider_id=%s,updated_at=%s WHERE id=%s",
                   (str(provider_id),int(time.time()),job["id"]))
