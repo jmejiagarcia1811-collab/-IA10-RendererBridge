@@ -1,43 +1,53 @@
 # IA 3.0 — Autopilot execution status
-Updated: 2026-10-18 (UTC)
+Updated: 2026-10-19 12:12 UTC
 
 ## Operating rules
 - Keep the existing Render service and PostgreSQL resource; do not create duplicates.
-- Keep the project on Render Free unless explicitly approved otherwise.
+- Keep the project on Render Free and target 0 € recurring cost.
 - Never commit credentials, print secrets, or ask the owner to paste keys into chat.
 - Do not publish to social platforms from this bridge. A rendered job is not publication-ready.
-- Keep real publishing blocked until render URL, video integrity, vertical dimensions, audio/text, source attribution, and editorial QA are verified.
+- Keep real publishing blocked until technical QC, source attribution, on-screen text review, and human editorial QA are verified.
 - Distinguish verified results from estimates; never report revenue unless it is actually received.
 
-## Observed deployment
-- Service: `ia10-renderer-bridge`
-- Service URL: https://ia10-renderer-bridge.onrender.com
-- Render service ID: `srv-db8v6ocs728c73b73t50`
-- Repository branch: `main`; auto-deploy is disabled.
-- PostgreSQL resource: `ia10-control-queue`, Free plan, status reported available, expiry reported as 2026-11-15.
-- Latest inspected deployment was marked live. App logs show periodic `POST /jobs/process-next` requests returning HTTP 200 with `queue_empty`; this confirms worker polling, not successful processing of a real job.
-- External database diagnostic was blocked by an empty IP allowlist. Do not open the database to all IPs merely to make the hosted diagnostic connector work. Verify the service's own `/health` output and app connection instead.
-- Code's health endpoint reports `database_mode=sqlite-local-ephemeral` when `DATABASE_URL` is absent. The target state is PostgreSQL, not ephemeral SQLite.
-- Shotstack test has previously been rejected with HTTP 403. No verified successful Shotstack render has yet been established by this check.
-- The fixed local MP4 is diagnostic fallback only. It must never be presented as a successful Shotstack render or approved content.
+## Current infrastructure (verified)
+- Render service: `ia10-renderer-bridge`
+- URL: https://ia10-renderer-bridge.onrender.com
+- Service ID: `srv-db8v6ocs728c73b73t50`
+- Repository branch: `main`; automatic deploy is disabled.
+- Plan: Free; one service instance; Frankfurt region.
+- PostgreSQL resource: `ia10-control-queue`, Free plan; expiry previously reported as 2026-11-15. Plan a continuity check before expiry without opening the DB to broad IP ranges.
+- Latest deployment commit: `8a620b829bd7f0444c66895a555d29ae1869a527`; Render events show deployment succeeded and service live at 2026-10-19 12:06 UTC.
+- App logs show a PostgreSQL fingerprint (`queue_probe db=5784ad06bd7c`) and the worker successfully querying the queue. Earlier health output reported `database_mode=postgres` and `database_ok=true`.
+- Logs show provider authentication check `status=200 result=ok`; never log or disclose the API key.
 
-## Automated workflow / acceptance gates
-1. **Preflight**: service responds, `/health` returns 200, `database_mode=postgres`, `database_ok=true`, auth configured, provider key present. Never log secret values.
-2. **Provider check**: verify the Shotstack API base matches the credential's environment (Sandbox/stage vs production/v1). A 403 is a hard failure; do not retry endlessly or switch environments blindly.
-3. **Single test job**: enqueue one clearly labelled test render only after preflight; no user-facing content or publication.
-4. **Render poll**: persist provider ID and poll until terminal state; capture provider error safely; use bounded retries/backoff.
-5. **Artifact checks**: verify a real MP4 is reachable, decodable, 1080x1920 / 9:16, expected duration, audio where required, and no truncation. A local fallback does not satisfy this gate.
-6. **QA state**: use a distinct review/QA gate before READY_TO_PUBLISH; do not auto-publish on render completion.
-7. **Persistence/recovery**: restart/redeploy and verify jobs remain in PostgreSQL; recover interrupted jobs safely and idempotently.
-8. **Reporting**: record timestamp, job ID, render provider status, artifact URL, checks passed/failed, and cost tier; no secrets.
-9. **Publication**: remains disabled until all gates pass and a human explicitly enables the connected publishing workflow.
+## Verified rendering evidence
+- Diagnostic job ID 20 reached `QC_PENDING_REVIEW`.
+- Render poll log at 2026-10-19 12:05:45 UTC reports `decoded_portrait_1080x1920_duration_5.01s_audio_stream_present`.
+- This is evidence of a real provider render artifact passing the bridge's technical checks, not evidence of editorial approval or publication.
+- The bootstrap helper reported the matching diagnostic already existed, so do not claim the environment-variable update created a second job.
+- The worker subsequently returned HTTP 200 with `queue_empty`; this confirms polling is alive but no ordinary content job was waiting.
+- A second deployment was triggered during the previous troubleshooting session. The latest deployment is live; the earlier deployment is deactivated. Avoid further deploys unless code/config changes require one.
 
-## Immediate blockers
-- Confirm runtime uses PostgreSQL rather than `sqlite-local-ephemeral`.
-- Resolve Shotstack 403 by confirming the credential's environment and matching `SHOTSTACK_API_BASE`.
-- Run one successful provider render and validate the returned artifact.
-- Add real video QC and persistence/restart evidence.
-- Only then integrate scheduled content ingestion, factual verification, Metricool publishing, and analytics.
+## Current workflow and acceptance gates
+1. **Preflight:** service responds, health returns 200, PostgreSQL connected, auth configured, provider key present; never expose secret values.
+2. **Provider check:** API base and credential environment match (Sandbox/stage vs production/v1). A 403 is a hard failure; do not retry indefinitely or switch environments blindly.
+3. **Single diagnostic job:** create one clearly labelled test render only when needed; no user-facing content or publication.
+4. **Render poll:** persist provider ID and poll to terminal state; capture safe provider diagnostics.
+5. **Artifact QC:** verify real provider MP4, decodability, 1080x1920 / 9:16, duration 4–15s, audio where required. Local fallback does not satisfy this gate.
+6. **Editorial gate:** source/date, factual accuracy, spelling, readable overlays, rights, and human approval must be checked before READY_TO_PUBLISH.
+7. **Persistence/recovery:** verify job survives service restart/redeploy and remains in PostgreSQL; recover interrupted jobs idempotently.
+8. **Content intake:** connect and test radar → verifier → content assembly → queue. This upstream intake is not demonstrated by this renderer repository's current runtime logs.
+9. **Publication/analytics:** verify Metricool/platform connection and a safe draft/test workflow. Publishing remains disabled until a human explicitly approves the connected workflow.
+10. **Reporting:** record timestamp, job ID, provider state, artifact URL (without temporary signed query strings), checks passed/failed, and cost tier; no secrets.
+
+## Remaining blockers
+- No ordinary content jobs have been observed entering the queue; the worker is polling an empty queue.
+- The upstream radar, fact-checking, and Spanish content-generation circuit is not proven connected to this bridge.
+- Persistence across a service restart/redeploy has not yet been demonstrated end to end.
+- Editorial QA and the `READY_TO_PUBLISH` gate are not verified end to end.
+- Metricool publishing and analytics have not been tested in this run; no real posts have been sent.
+- The PostgreSQL Free expiry date needs a continuity plan before 2026-11-15.
 
 ## Current status
-**Diagnostic only — not production-ready.** Worker polling is observed; database persistence and successful provider render are not yet verified. No social post should be sent.
+**Renderer: diagnostic cloud render technically verified. Full IA 3.0 autopilot: still open.**
+No real social publication should be sent until upstream intake, editorial QA, persistence, and publication controls are verified.
