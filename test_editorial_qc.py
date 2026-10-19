@@ -104,6 +104,29 @@ class EditorialQCEndpointTests(unittest.TestCase):
         self.assertEqual(body["error"], "diagnostic_jobs_cannot_be_approved")
         self.assertEqual(self.get_job_state(2)["state"], "QC_PENDING_REVIEW")
 
+    def test_rejection_requires_reason_and_marks_job_failed(self):
+        status, body = self.post_qc(1, {"decision": "reject", "checklist": {}, "reason": "Fact not sourced"})
+        self.assertEqual(status, 200)
+        self.assertEqual(body["state"], "QC_FAILED")
+        row = self.get_job_state(1)
+        self.assertEqual(row["state"], "QC_FAILED")
+        self.assertIn("editorial_qc_rejected", row["error"])
+
+    def test_second_review_cannot_approve_job_twice(self):
+        payload = {"decision": "approve", "checklist": {key: True for key in EDITORIAL_QC_CHECKS}}
+        first_status, first_body = self.post_qc(1, payload)
+        second_status, second_body = self.post_qc(1, payload)
+        self.assertEqual(first_status, 200)
+        self.assertEqual(second_status, 409)
+        self.assertEqual(second_body["error"], "job_not_pending_editorial_review")
+        self.assertEqual(self.get_job_state(1)["state"], "READY_TO_PUBLISH")
+
+    def test_rejection_requires_nonempty_reason(self):
+        status, body = self.post_qc(1, {"decision": "reject", "checklist": {}, "reason": "  "})
+        self.assertEqual(status, 400)
+        self.assertEqual(body["error"], "rejection_reason_required")
+        self.assertEqual(self.get_job_state(1)["state"], "QC_PENDING_REVIEW")
+
     def test_approved_production_job_becomes_ready_but_is_not_published(self):
         payload = {"decision": "approve", "checklist": {key: True for key in EDITORIAL_QC_CHECKS}}
         status, body = self.post_qc(1, payload)
