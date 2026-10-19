@@ -150,6 +150,22 @@ class Handler(BaseHTTPRequestHandler):
                 db_ok = True
                 rows = execute(con, "SELECT state, COUNT(*) AS count FROM jobs GROUP BY state").fetchall()
                 queue_counts = {str(row["state"]): int(row["count"]) for row in rows}
+                # Public health diagnostics expose only coarse failure categories, never job titles,
+                # provider IDs, render URLs, full error messages, or credentials.
+                failure_rows = execute(con, """SELECT
+                    CASE
+                      WHEN lower(COALESCE(error,'')) LIKE '%provider_http_403%' OR lower(COALESCE(error,'')) LIKE '%sandbox key rejected%' THEN 'provider_auth_or_permission'
+                      WHEN lower(COALESCE(error,'')) LIKE '%provider_http_%' OR lower(COALESCE(error,'')) LIKE '%shotstack_render_failed%' THEN 'provider_render_error'
+                      WHEN lower(COALESCE(error,'')) LIKE '%audio_stream_missing%' THEN 'qc_audio_missing'
+                      WHEN lower(COALESCE(error,'')) LIKE '%render_url_%' OR lower(COALESCE(error,'')) LIKE '%download_failed%' THEN 'qc_render_url'
+                      WHEN lower(COALESCE(error,'')) LIKE '%decode%' OR lower(COALESCE(error,'')) LIKE '%invalid_or_incomplete%' THEN 'qc_decode'
+                      WHEN lower(COALESCE(error,'')) LIKE '%duration_out_of_range%' OR lower(COALESCE(error,'')) LIKE '%not_portrait%' OR lower(COALESCE(error,'')) LIKE '%dimensions_missing%' THEN 'qc_format'
+                      WHEN COALESCE(error,'') = '' THEN 'no_error_detail'
+                      ELSE 'other'
+                    END AS category, COUNT(*) AS count
+                    FROM jobs WHERE state IN ('FAILED','QC_FAILED')
+                    GROUP BY category ORDER BY category""").fetchall()
+                failure_categories = {str(row["category"]): int(row["count"]) for row in failure_rows}
                 row = execute(con, "SELECT state, render_url, error FROM jobs WHERE title LIKE %s ORDER BY id DESC LIMIT 1",
                               ("IA10_BOOTSTRAP_TEST_RENDER%",)).fetchone()
                 if row:
@@ -164,7 +180,7 @@ class Handler(BaseHTTPRequestHandler):
               "render_configured":bool(os.environ.get("SHOTSTACK_API_KEY")),
               "auth_configured":bool(os.environ.get("IA10_BRIDGE_TOKEN")),
               "bootstrap_test_enabled":os.environ.get("IA10_BOOTSTRAP_TEST_RENDER", "").strip().lower() in ("1", "true", "yes"),
-              "queue_counts":queue_counts, "bootstrap_test_render":test_render,
+              "queue_counts":queue_counts, "failure_categories":failure_categories, "bootstrap_test_render":test_render,
               "note":"Health does not prove provider validity, video QC, or publication."
             })
             return
