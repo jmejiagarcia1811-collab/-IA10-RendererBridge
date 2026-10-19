@@ -399,6 +399,18 @@ def technical_video_qc(url):
                 return False, "render_url_fetch_failed"
             if "moov atom not found" in low or "invalid data found" in low or "could not find codec parameters" in low:
                 return False, "render_file_invalid_or_incomplete"
+            # Emit a sanitized diagnostic for other decoder failures too; never log signed URLs.
+            safe_lines = []
+            diagnostic_markers = ("error", "failed", "denied", "refused", "timeout", "timed out",
+                                  "invalid", "http", "opening", "server", "tls", "ssl", "network",
+                                  "protocol", "not found", "forbidden", "unreachable", "permission")
+            for line in output.splitlines():
+                if any(marker in line.lower() for marker in diagnostic_markers):
+                    line = re.sub(r"https?://[^\\s'\"<>]+", "[URL_REDACTED]", line)
+                    line = re.sub(r"(?i)(token|signature|key)=([^&\\s]+)", r"\\1=[REDACTED]", line)
+                    safe_lines.append(line[:180])
+            if safe_lines:
+                print("technical_qc_decode_detail " + " | ".join(safe_lines[-5:])[:600], flush=True)
             return False, "ffmpeg_decode_failed"
         if not dimensions:
             return False, "video_stream_or_dimensions_missing"
