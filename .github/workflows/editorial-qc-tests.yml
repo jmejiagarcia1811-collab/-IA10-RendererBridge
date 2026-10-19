@@ -1,0 +1,24 @@
+name: Editorial QC tests
+
+on:
+  push:
+    branches:
+      - "feature/guarded-editorial-qc"
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install runtime dependencies
+        run: pip install -r requirements.txt
+      - name: Compile Python modules
+        run: python -m py_compile app.py test_editorial_qc.py
+      - name: Run editorial QC tests
+        run: python -m unittest -v test_editorial_qc

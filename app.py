@@ -20,23 +20,25 @@ def connect_db():
         con.execute("""CREATE TABLE IF NOT EXISTS jobs (
           id BIGSERIAL PRIMARY KEY, title TEXT NOT NULL, edit_json TEXT NOT NULL,
           state TEXT NOT NULL, created_at BIGINT NOT NULL, updated_at BIGINT NOT NULL,
-          provider_id TEXT, render_url TEXT, error TEXT)""")
+          provider_id TEXT, render_url TEXT, error TEXT, qc_review_json TEXT)""")
     else:
         con = sqlite3.connect(DB_PATH)
         con.row_factory = sqlite3.Row
         con.execute("""CREATE TABLE IF NOT EXISTS jobs (
           id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, edit_json TEXT NOT NULL,
           state TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
-          provider_id TEXT, render_url TEXT, error TEXT)""")
-    # Add the render URL column to existing queue databases without losing jobs.
+          provider_id TEXT, render_url TEXT, error TEXT, qc_review_json TEXT)""")
+    # Add optional columns to existing queue databases without losing jobs.
     if isinstance(con, sqlite3.Connection):
-        try:
-            con.execute("ALTER TABLE jobs ADD COLUMN render_url TEXT")
-        except sqlite3.OperationalError as exc:
-            if "duplicate column name" not in str(exc).lower():
-                raise
+        for column in ("render_url", "qc_review_json"):
+            try:
+                con.execute("ALTER TABLE jobs ADD COLUMN " + column + " TEXT")
+            except sqlite3.OperationalError as exc:
+                if "duplicate column name" not in str(exc).lower():
+                    raise
     else:
         con.execute("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS render_url TEXT")
+        con.execute("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS qc_review_json TEXT")
     con.commit()
     return con
 
@@ -50,6 +52,24 @@ def parse_body(handler):
     if length < 2 or length > MAX_BODY:
         raise ValueError("invalid_body_size")
     return json.loads(handler.rfile.read(length).decode("utf-8"))
+
+EDITORIAL_QC_CHECKS = (
+    "editorial_reviewed",
+    "facts_sources_verified",
+    "spelling_names_dates_checked",
+    "safe_margins_layout_checked",
+    "audio_sync_checked",
+    "duration_format_checked",
+    "no_watermark_overlap",
+)
+
+def validate_editorial_qc(decision, checklist):
+    """Validate an explicit checklist; this never publishes content."""
+    if decision not in ("approve", "reject") or not isinstance(checklist, dict):
+        return False
+    if decision == "reject":
+        return True
+    return all(checklist.get(key) is True for key in EDITORIAL_QC_CHECKS)
 
 def render_local_test_video(filename):
     """Create a clearly labelled diagnostic MP4; never used for production jobs."""
@@ -284,6 +304,73 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:
                 return self.send_json(503, {"error":"database_unavailable"})
 
+        if path.startswith("/jobs/") and path.endswith("/qc"):
+            raw_id = path[len("/jobs/"):-len("/qc")].strip("/")
+            if not raw_id.isdigit():
+                return self.send_json(400, {"error":"invalid_job_id"})
+            decision = body.get("decision")
+            checklist = body.get("checklist")
+            if not validate_editorial_qc(decision, checklist):
+                return self.send_json(400, {
+                    "error":"editorial_qc_checklist_incomplete",
+                    "required_checks":list(EDITORIAL_QC_CHECKS),
+                    "note":"Approval requires every check to be explicitly true; this endpoint never publishes."
+                })
+            if decision == "reject":
+                reason = body.get("reason", "")
+                if not isinstance(reason, str) or not reason.strip():
+                    return self.send_json(400, {"error":"rejection_reason_required"})
+                reason = "editorial_qc_rejected: " + " ".join(reason.split())[:300]
+            else:
+                reason = ""
+            try:
+                con = connect_db()
+                job = execute(con,
+                    "SELECT id,title,state,provider_id,render_url,error FROM jobs WHERE id=%s",
+                    (int(raw_id),)).fetchone()
+                if not job:
+                    con.close()
+                    return self.send_json(404, {"error":"job_not_found"})
+                title = str(job["title"] or "")
+                # Diagnostic/bootstrap renders can never be promoted to publishable state.
+                if title.startswith("IA10_BOOTSTRAP_TEST_RENDER"):
+                    con.close()
+                    return self.send_json(409, {"error":"diagnostic_jobs_cannot_be_approved"})
+                if str(job["state"]) != "QC_PENDING_REVIEW":
+                    con.close()
+                    return self.send_json(409, {"error":"job_not_pending_editorial_review","state":str(job["state"])})
+                if decision == "approve" and (
+                    not str(job["provider_id"] or "").strip()
+                    or not str(job["render_url"] or "").startswith("https://")
+                ):
+                    con.close()
+                    return self.send_json(409, {"error":"real_provider_render_required"})
+                reviewed_at = int(time.time())
+                review = {
+                    "decision":decision,
+                    "checklist":{key: checklist.get(key) is True for key in EDITORIAL_QC_CHECKS},
+                    "reviewed_at":reviewed_at,
+                }
+                new_state = "READY_TO_PUBLISH" if decision == "approve" else "QC_FAILED"
+                stored_error = str(job["error"] or "") if decision == "approve" else reason
+                cur = execute(con,
+                    "UPDATE jobs SET state=%s,error=%s,qc_review_json=%s,updated_at=%s WHERE id=%s AND state='QC_PENDING_REVIEW'",
+                    (new_state,stored_error,json.dumps(review,separators=(",",":")),reviewed_at,int(raw_id)))
+                if cur.rowcount != 1:
+                    con.rollback()
+                    con.close()
+                    return self.send_json(409, {"error":"job_state_changed_retry_review"})
+                con.commit()
+                con.close()
+                return self.send_json(200, {
+                    "id":int(raw_id),"state":new_state,
+                    "published":False,
+                    "note":"QC decision recorded. READY_TO_PUBLISH is not an instruction to publish automatically."
+                })
+            except Exception as exc:
+                print("editorial_qc_error type=%s" % type(exc).__name__, flush=True)
+                return self.send_json(503, {"error":"database_unavailable"})
+        
         if path == "/jobs/process-next":
             try:
                 con = connect_db()
@@ -671,9 +758,10 @@ def background_queue_worker():
         except Exception as exc:
             print("queue_worker_error type=%s" % type(exc).__name__, flush=True)
 
-connect_db().close()
-check_shotstack_credentials()
-recover_interrupted_bootstrap_jobs()
-bootstrap_test_render_once()
-threading.Thread(target=background_queue_worker, name="ia10-queue-worker", daemon=True).start()
-ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()
+if __name__ == "__main__":
+    connect_db().close()
+    check_shotstack_credentials()
+    recover_interrupted_bootstrap_jobs()
+    bootstrap_test_render_once()
+    threading.Thread(target=background_queue_worker, name="ia10-queue-worker", daemon=True).start()
+    ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()
