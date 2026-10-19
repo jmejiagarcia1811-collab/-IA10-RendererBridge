@@ -344,17 +344,47 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 data = media_path.read_bytes()
             except OSError:
-                # This one fixed diagnostic artifact is reproducible on demand because
-                # Render's ephemeral filesystem is not shared across deploy instances.
-                # Regenerate only numbered diagnostic artifacts; never serve arbitrary files.
-                if not is_diagnostic:
+                # Render's filesystem is ephemeral and instances do not share files.
+                # Recreate only allowlisted diagnostic artifacts or a known local-render
+                # job whose stored record still authorizes this exact media filename.
+                if is_diagnostic:
+                    try:
+                        render_local_test_video(filename)
+                        data = media_path.read_bytes()
+                    except Exception as exc:
+                        print("diagnostic_media_regeneration_failed type=%s" % type(exc).__name__, flush=True)
+                        return self.send_json(503, {"error":"diagnostic_media_regeneration_failed"})
+                elif is_local_render:
+                    con = None
+                    try:
+                        job_id = int(filename[len("local-"):-4])
+                        con = connect_db()
+                        job = execute(con,
+                            "SELECT id,title,state,provider_id,render_url,edit_json FROM jobs WHERE id=%s",
+                            (job_id,)).fetchone()
+                        if (not job
+                            or str(job["provider_id"] or "") != "local-ffmpeg-edge-tts"
+                            or str(job["state"] or "") not in ("QC_PENDING_REVIEW", "READY_TO_PUBLISH")
+                            or str(job["render_url"] or "").rstrip("/") !=
+                               (os.environ.get("IA10_PUBLIC_BASE_URL", "https://ia10-renderer-bridge.onrender.com").rstrip("/") + "/media/" + filename)):
+                            return self.send_json(404, {"error":"media_not_found"})
+                        edit_payload = json.loads(job["edit_json"])
+                        local_spec = edit_payload.get("local_render") if isinstance(edit_payload, dict) else None
+                        if not isinstance(local_spec, dict):
+                            return self.send_json(404, {"error":"media_not_found"})
+                        render_local_content(str(job["title"]), local_spec, filename, MEDIA_DIR)
+                        data = media_path.read_bytes()
+                    except Exception as exc:
+                        print("local_media_regeneration_failed type=%s" % type(exc).__name__, flush=True)
+                        return self.send_json(503, {"error":"local_media_regeneration_failed"})
+                    finally:
+                        if con is not None:
+                            try:
+                                con.close()
+                            except Exception:
+                                pass
+                else:
                     return self.send_json(404, {"error":"media_not_found"})
-                try:
-                    render_local_test_video(filename)
-                    data = media_path.read_bytes()
-                except Exception as exc:
-                    print("diagnostic_media_regeneration_failed=%s" % str(exc)[:180], flush=True)
-                    return self.send_json(503, {"error":"diagnostic_media_regeneration_failed"})
             self.send_response(200)
             self.send_header("Content-Type", "video/mp4")
             self.send_header("Content-Length", str(len(data)))
