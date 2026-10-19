@@ -498,8 +498,27 @@ class Handler(BaseHTTPRequestHandler):
                 con.commit(); con.close()
             except Exception:
                 return self.send_json(503, {"error":"database_unavailable"})
+            # Validate the stored render payload separately from the provider call.
+            # Previously json.loads/shape errors were all reported as render_error_ValueError
+            # or render_error_KeyError, obscuring bad queue records as renderer failures.
             try:
-                result = submit_render(json.loads(job["edit_json"]))
+                edit_payload = json.loads(job["edit_json"])
+            except (TypeError, ValueError):
+                con = connect_db()
+                execute(con, "UPDATE jobs SET state='FAILED',error=%s,updated_at=%s WHERE id=%s AND state='PROCESSING'",
+                        ("invalid_job_edit_json", int(time.time()), job["id"]))
+                con.commit(); con.close()
+                print("queue_job_rejected reason=invalid_job_edit_json", flush=True)
+                return self.send_json(422, {"processed":True,"id":job["id"],"state":"FAILED","error":"invalid_job_edit_json"})
+            if not isinstance(edit_payload, dict) or not isinstance(edit_payload.get("timeline"), dict) or not isinstance(edit_payload.get("output"), dict):
+                con = connect_db()
+                execute(con, "UPDATE jobs SET state='FAILED',error=%s,updated_at=%s WHERE id=%s AND state='PROCESSING'",
+                        ("invalid_job_edit_schema", int(time.time()), job["id"]))
+                con.commit(); con.close()
+                print("queue_job_rejected reason=invalid_job_edit_schema", flush=True)
+                return self.send_json(422, {"processed":True,"id":job["id"],"state":"FAILED","error":"invalid_job_edit_schema"})
+            try:
+                result = submit_render(edit_payload)
                 provider_id = (result.get("response") or {}).get("id") or (result.get("data") or {}).get("id") or ""
                 if not isinstance(provider_id, str) or not provider_id.strip():
                     raise RuntimeError("provider_response_missing_render_id")
