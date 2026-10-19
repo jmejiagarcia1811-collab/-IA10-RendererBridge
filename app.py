@@ -106,6 +106,24 @@ def submit_render(edit):
     with urllib.request.urlopen(req, timeout=25) as response:
         return json.loads(response.read().decode("utf-8"))
 
+def check_shotstack_credentials():
+    """Read-only credential check against Shotstack templates; never logs keys or response bodies."""
+    key = os.environ.get("SHOTSTACK_API_KEY", "").strip()
+    if not key:
+        print("provider_auth_check result=missing_key", flush=True)
+        return
+    base = os.environ.get("SHOTSTACK_API_BASE", "https://api.shotstack.io/edit/stage").strip().rstrip("/")
+    try:
+        req = urllib.request.Request(base + "/templates", headers={"Accept": "application/json", "x-api-key": key}, method="GET")
+        with urllib.request.urlopen(req, timeout=12) as response:
+            print("provider_auth_check status=%s result=%s" % (response.status, "ok" if response.status == 200 else "unexpected_status"), flush=True)
+    except urllib.error.HTTPError as exc:
+        hint = "unauthorized" if exc.code == 401 else "forbidden_check_key_environment_or_account" if exc.code == 403 else "http_error"
+        print("provider_auth_check status=%s result=%s" % (exc.code, hint), flush=True)
+    except Exception as exc:
+        print("provider_auth_check result=network_error type=%s" % type(exc).__name__, flush=True)
+
+
 class Handler(BaseHTTPRequestHandler):
     def send_json(self, status, payload):
         data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -527,6 +545,7 @@ def background_queue_worker():
             print("queue_worker_error type=%s" % type(exc).__name__, flush=True)
 
 connect_db().close()
+check_shotstack_credentials()
 recover_interrupted_bootstrap_jobs()
 bootstrap_test_render_once()
 threading.Thread(target=background_queue_worker, name="ia10-queue-worker", daemon=True).start()
