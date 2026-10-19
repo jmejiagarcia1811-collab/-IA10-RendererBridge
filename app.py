@@ -127,21 +127,27 @@ def submit_render(edit):
         return json.loads(response.read().decode("utf-8"))
 
 def check_shotstack_credentials():
-    """Read-only credential check against Shotstack templates; never logs keys or response bodies."""
+    """Read-only credential check against both Shotstack environments; never logs keys or bodies."""
     key = os.environ.get("SHOTSTACK_API_KEY", "").strip()
     if not key:
         print("provider_auth_check result=missing_key", flush=True)
         return
-    base = os.environ.get("SHOTSTACK_API_BASE", "https://api.shotstack.io/edit/stage").strip().rstrip("/")
-    try:
-        req = urllib.request.Request(base + "/templates", headers={"Accept": "application/json", "x-api-key": key}, method="GET")
-        with urllib.request.urlopen(req, timeout=12) as response:
-            print("provider_auth_check status=%s result=%s" % (response.status, "ok" if response.status == 200 else "unexpected_status"), flush=True)
-    except urllib.error.HTTPError as exc:
-        hint = "unauthorized" if exc.code == 401 else "forbidden_check_key_environment_or_account" if exc.code == 403 else "http_error"
-        print("provider_auth_check status=%s result=%s" % (exc.code, hint), flush=True)
-    except Exception as exc:
-        print("provider_auth_check result=network_error type=%s" % type(exc).__name__, flush=True)
+    configured = os.environ.get("SHOTSTACK_API_BASE", "https://api.shotstack.io/edit/stage").strip().rstrip("/")
+    bases = []
+    for candidate in (configured, "https://api.shotstack.io/edit/stage", "https://api.shotstack.io/edit/v1"):
+        if candidate and candidate not in bases:
+            bases.append(candidate)
+    for base in bases:
+        env_name = "stage" if base.endswith("/stage") else "production" if base.endswith("/v1") else "custom"
+        try:
+            req = urllib.request.Request(base + "/templates", headers={"Accept": "application/json", "x-api-key": key}, method="GET")
+            with urllib.request.urlopen(req, timeout=12) as response:
+                print("provider_auth_probe environment=%s status=%s result=%s" % (env_name, response.status, "ok" if response.status == 200 else "unexpected_status"), flush=True)
+        except urllib.error.HTTPError as exc:
+            hint = "unauthorized" if exc.code == 401 else "forbidden_key_or_account_permissions" if exc.code == 403 else "http_error"
+            print("provider_auth_probe environment=%s status=%s result=%s" % (env_name, exc.code, hint), flush=True)
+        except Exception as exc:
+            print("provider_auth_probe environment=%s result=network_error type=%s" % (env_name, type(exc).__name__), flush=True)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -181,7 +187,9 @@ class Handler(BaseHTTPRequestHandler):
                 failure_rows = execute(con, """SELECT
                     CASE
                       WHEN POSITION('provider_http_403' IN lower(COALESCE(to_jsonb(j)->>'error',''))) > 0 THEN 'provider_http_403_forbidden'
-                          WHEN POSITION('sandbox key rejected' IN lower(COALESCE(to_jsonb(j)->>'error',''))) > 0 THEN 'provider_sandbox_key_rejected'
+                      WHEN POSITION('sandbox key rejected' IN lower(COALESCE(to_jsonb(j)->>'error',''))) > 0 OR POSITION('shotstack_sandbox_key_rejected' IN lower(COALESCE(to_jsonb(j)->>'error',''))) > 0 THEN 'provider_sandbox_key_rejected'
+                      WHEN POSITION('provider_response_missing_render_id' IN lower(COALESCE(to_jsonb(j)->>'error',''))) > 0 THEN 'provider_response_invalid'
+                      WHEN POSITION('render_error_' IN lower(COALESCE(to_jsonb(j)->>'error',''))) > 0 THEN 'internal_render_error'
                       WHEN POSITION('provider_http_' IN lower(COALESCE(to_jsonb(j)->>'error',''))) > 0 OR POSITION('shotstack_render_failed' IN lower(COALESCE(to_jsonb(j)->>'error',''))) > 0 THEN 'provider_render_error'
                       WHEN POSITION('audio_stream_missing' IN lower(COALESCE(to_jsonb(j)->>'error',''))) > 0 THEN 'qc_audio_missing'
                       WHEN POSITION('render_url_' IN lower(COALESCE(to_jsonb(j)->>'error',''))) > 0 OR POSITION('download_failed' IN lower(COALESCE(to_jsonb(j)->>'error',''))) > 0 THEN 'qc_render_url'
