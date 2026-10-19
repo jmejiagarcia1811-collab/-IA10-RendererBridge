@@ -28,6 +28,10 @@ def connect_db():
           id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, edit_json TEXT NOT NULL,
           state TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
           provider_id TEXT, render_url TEXT, error TEXT)""")
+    # Auditable editorial gate. This records a human decision; it never publishes.
+    con.execute("""CREATE TABLE IF NOT EXISTS editorial_reviews (
+      job_id BIGINT PRIMARY KEY, decision TEXT NOT NULL, source_urls TEXT NOT NULL,
+      notes TEXT NOT NULL, reviewer_confirmation TEXT NOT NULL, reviewed_at BIGINT NOT NULL)""")
     # Add the render URL column to existing queue databases without losing jobs.
     if isinstance(con, sqlite3.Connection):
         try:
@@ -238,6 +242,55 @@ class Handler(BaseHTTPRequestHandler):
             body = parse_body(self)
         except Exception:
             return self.send_json(400, {"error":"invalid_json_or_body_size"})
+
+        if path == "/jobs/editorial-review":
+            # This endpoint records an explicit human editorial decision only.
+            # It is not a publishing endpoint and cannot approve diagnostic bootstrap jobs.
+            try:
+                job_id = int(body.get("job_id"))
+                decision = str(body.get("decision", "")).upper()
+                source_urls = body.get("source_urls")
+                notes = body.get("notes")
+                confirmation = body.get("human_review_confirmed")
+                if decision not in ("APPROVED", "REJECTED"):
+                    return self.send_json(400, {"error":"decision_must_be_APPROVED_or_REJECTED"})
+                if confirmation is not True:
+                    return self.send_json(400, {"error":"explicit_human_review_confirmation_required"})
+                if not isinstance(source_urls, list) or not source_urls or len(source_urls) > 10:
+                    return self.send_json(400, {"error":"one_to_ten_source_urls_required"})
+                if any(not isinstance(u, str) or not u.startswith("https://") or len(u) > 2000 for u in source_urls):
+                    return self.send_json(400, {"error":"source_urls_must_be_https"})
+                if not isinstance(notes, str) or not notes.strip() or len(notes) > 4000:
+                    return self.send_json(400, {"error":"editorial_review_notes_required"})
+                con = connect_db()
+                job = execute(con, "SELECT id,title,state FROM jobs WHERE id=%s", (job_id,)).fetchone()
+                if not job:
+                    con.close()
+                    return self.send_json(404, {"error":"job_not_found"})
+                if str(job["title"]).startswith("IA10_BOOTSTRAP_TEST_RENDER"):
+                    con.close()
+                    return self.send_json(409, {"error":"diagnostic_jobs_cannot_be_editorially_approved"})
+                if str(job["state"]) != "QC_PENDING_REVIEW":
+                    con.close()
+                    return self.send_json(409, {"error":"technical_qc_must_pass_first"})
+                now = int(time.time())
+                execute(con, """INSERT INTO editorial_reviews
+                  (job_id,decision,source_urls,notes,reviewer_confirmation,reviewed_at)
+                  VALUES(%s,%s,%s,%s,%s,%s)
+                  ON CONFLICT(job_id) DO UPDATE SET decision=excluded.decision,
+                  source_urls=excluded.source_urls,notes=excluded.notes,
+                  reviewer_confirmation=excluded.reviewer_confirmation,reviewed_at=excluded.reviewed_at""",
+                  (job_id, decision, json.dumps(source_urls), notes.strip(),
+                   "human_confirmed", now))
+                con.commit()
+                con.close()
+                return self.send_json(200, {"job_id":job_id,"editorial_decision":decision,
+                    "review_recorded":True,"published":False,
+                    "note":"Editorial review recorded only. No publishing integration is enabled."})
+            except (ValueError, TypeError):
+                return self.send_json(400, {"error":"valid_job_id_required"})
+            except Exception:
+                return self.send_json(503, {"error":"editorial_review_storage_unavailable"})
 
         if path == "/jobs":
             title, edit = body.get("title"), body.get("edit")
