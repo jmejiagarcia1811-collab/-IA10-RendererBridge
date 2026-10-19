@@ -210,7 +210,8 @@ class Handler(BaseHTTPRequestHandler):
                                    "error": "diagnostic_query_failed"}
                 else:
                     test_render["error"] = "database_connection_failed"
-                print("health_diagnostics_failed stage=%s type=%s" % (diagnostic_stage, type(exc).__name__), flush=True)
+                safe_db_message = getattr(getattr(exc, "diag", None), "message_primary", None) or str(exc).splitlines()[0][:180]
+                print("health_diagnostics_failed stage=%s type=%s detail=%s" % (diagnostic_stage, type(exc).__name__, safe_db_message.replace("\\n", " ")), flush=True)
             finally:
                 if con is not None:
                     try:
