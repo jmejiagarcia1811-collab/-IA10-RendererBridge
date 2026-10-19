@@ -461,12 +461,15 @@ def technical_video_qc(url):
             return False, "ffmpeg_decode_failed"
         if not dimensions:
             return False, "video_stream_or_dimensions_missing"
+        # Publishing pipeline expects audible content; do not pass silent MP4s through technical QC.
+        if not re.search(r"\bAudio:", output, re.IGNORECASE):
+            return False, "audio_stream_missing"
         width, height = dimensions
         if height <= width:
             return False, "not_portrait"
         if not 4 <= duration <= 15:
             return False, "duration_out_of_range"
-        return True, "decoded_portrait_%sx%s_duration_%.2fs" % (width, height, duration)
+        return True, "decoded_portrait_%sx%s_duration_%.2fs_audio_stream_present" % (width, height, duration)
     except subprocess.TimeoutExpired:
         return False, "technical_qc_timeout"
     except Exception as exc:
