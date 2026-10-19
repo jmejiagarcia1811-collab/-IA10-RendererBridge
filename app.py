@@ -352,9 +352,10 @@ class Handler(BaseHTTPRequestHandler):
                     "reviewed_at":reviewed_at,
                 }
                 new_state = "READY_TO_PUBLISH" if decision == "approve" else "QC_FAILED"
+                stored_error = str(job.get("error") or "") if decision == "approve" else reason
                 cur = execute(con,
                     "UPDATE jobs SET state=%s,error=%s,qc_review_json=%s,updated_at=%s WHERE id=%s AND state='QC_PENDING_REVIEW'",
-                    (new_state,reason,json.dumps(review,separators=(",",":")),reviewed_at,int(raw_id)))
+                    (new_state,stored_error,json.dumps(review,separators=(",",":")),reviewed_at,int(raw_id)))
                 if cur.rowcount != 1:
                     con.rollback()
                     con.close()
@@ -756,9 +757,10 @@ def background_queue_worker():
         except Exception as exc:
             print("queue_worker_error type=%s" % type(exc).__name__, flush=True)
 
-connect_db().close()
-check_shotstack_credentials()
-recover_interrupted_bootstrap_jobs()
-bootstrap_test_render_once()
-threading.Thread(target=background_queue_worker, name="ia10-queue-worker", daemon=True).start()
-ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()
+if __name__ == "__main__":
+    connect_db().close()
+    check_shotstack_credentials()
+    recover_interrupted_bootstrap_jobs()
+    bootstrap_test_render_once()
+    threading.Thread(target=background_queue_worker, name="ia10-queue-worker", daemon=True).start()
+    ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()
