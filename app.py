@@ -3,6 +3,7 @@
 import json, mimetypes, os, shutil, sqlite3, subprocess, tempfile, threading, time, traceback, urllib.error, urllib.request
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from local_renderer import render_local_content
 
 HOST = "0.0.0.0"
 PORT = int(os.environ.get("PORT", "10000"))
@@ -335,6 +336,10 @@ class Handler(BaseHTTPRequestHandler):
             filename = path[len("/media/"):]
             if not filename or Path(filename).name != filename or not filename.endswith(".mp4"):
                 return self.send_json(404, {"error":"not_found"})
+            is_diagnostic = filename.startswith("ia10-test-") and filename[len("ia10-test-"):-4].isdigit()
+            is_local_render = filename.startswith("local-") and filename[len("local-"):-4].isdigit()
+            if not (is_diagnostic or is_local_render):
+                return self.send_json(404, {"error":"not_found"})
             media_path = MEDIA_DIR / filename
             try:
                 data = media_path.read_bytes()
@@ -342,9 +347,6 @@ class Handler(BaseHTTPRequestHandler):
                 # This one fixed diagnostic artifact is reproducible on demand because
                 # Render's ephemeral filesystem is not shared across deploy instances.
                 # Regenerate only numbered diagnostic artifacts; never serve arbitrary files.
-                is_diagnostic = (filename.startswith("ia10-test-") and
-                                 filename.endswith(".mp4") and
-                                 filename[len("ia10-test-"):-4].isdigit())
                 if not is_diagnostic:
                     return self.send_json(404, {"error":"media_not_found"})
                 try:
@@ -517,6 +519,31 @@ class Handler(BaseHTTPRequestHandler):
                 con.commit(); con.close()
                 print("queue_job_rejected reason=invalid_job_edit_schema", flush=True)
                 return self.send_json(422, {"processed":True,"id":job["id"],"state":"FAILED","error":"invalid_job_edit_schema"})
+            local_spec = edit_payload.get("local_render") if isinstance(edit_payload, dict) else None
+            local_enabled = os.environ.get("IA10_LOCAL_RENDER_ENABLED", "").strip().lower() in ("1", "true", "yes")
+            if local_enabled and isinstance(local_spec, dict) and not str(job["title"]).startswith("IA10_BOOTSTRAP_TEST_RENDER"):
+                try:
+                    filename = "local-%s.mp4" % job["id"]
+                    render_local_content(job["title"], local_spec, filename, MEDIA_DIR)
+                    public_url = os.environ.get("IA10_PUBLIC_BASE_URL", "https://ia10-renderer-bridge.onrender.com").rstrip("/") + "/media/" + filename
+                    passed, qc_detail = technical_video_qc(public_url)
+                    now = int(time.time())
+                    new_state = "QC_PENDING_REVIEW" if passed else "QC_FAILED"
+                    con = connect_db()
+                    execute(con, "UPDATE jobs SET state=%s,provider_id=%s,render_url=%s,error=%s,updated_at=%s WHERE id=%s",
+                            (new_state, "local-ffmpeg-edge-tts", public_url, ("local_renderer_" + qc_detail)[:180], now, job["id"]))
+                    con.commit(); con.close()
+                    print("local_renderer id=%s state=%s qc=%s" % (job["id"], new_state, qc_detail[:120]), flush=True)
+                    return self.send_json(200 if passed else 502, {"processed":True,"id":job["id"],"state":new_state,
+                        "renderer":"local-ffmpeg-edge-tts","render_url":public_url,"technical_qc":qc_detail,
+                        "note":"Technical QC only; editorial review is still required and nothing was published."})
+                except Exception as local_exc:
+                    print("local_renderer_failed id=%s type=%s" % (job["id"], type(local_exc).__name__), flush=True)
+                    con = connect_db()
+                    execute(con, "UPDATE jobs SET state='FAILED',error=%s,updated_at=%s WHERE id=%s",
+                            ("local_renderer_failed_" + type(local_exc).__name__)[:180], int(time.time()), job["id"])
+                    con.commit(); con.close()
+                    return self.send_json(502, {"processed":True,"id":job["id"],"state":"FAILED","error":"local_renderer_failed"})
             try:
                 result = submit_render(edit_payload)
                 provider_id = (result.get("response") or {}).get("id") or (result.get("data") or {}).get("id") or ""
