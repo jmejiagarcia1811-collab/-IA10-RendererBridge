@@ -241,6 +241,7 @@ class Handler(BaseHTTPRequestHandler):
                 if isinstance(con, sqlite3.Connection):
                     rows = execute(con, """SELECT id, state, COALESCE(updated_at,0) AS updated_at,
                         CASE
+                          WHEN state='QC_PENDING_REVIEW' THEN 'technical_qc_pass_editorial_review_pending'
                           WHEN lower(COALESCE(error,'')) LIKE '%provider_http_403%' OR lower(COALESCE(error,'')) LIKE '%sandbox key rejected%' THEN 'provider_auth_or_permission'
                           WHEN lower(COALESCE(error,'')) LIKE '%provider_http_%' OR lower(COALESCE(error,'')) LIKE '%shotstack_render_failed%' THEN 'provider_render_error'
                           WHEN lower(COALESCE(error,'')) LIKE '%audio_stream_missing%' THEN 'qc_audio_missing'
@@ -259,6 +260,7 @@ class Handler(BaseHTTPRequestHandler):
                         COALESCE(to_jsonb(j)->>'state','UNKNOWN') AS state,
                         COALESCE(to_jsonb(j)->>'updated_at','0') AS updated_at,
                         CASE
+                          WHEN COALESCE(to_jsonb(j)->>'state','')='QC_PENDING_REVIEW' THEN 'technical_qc_pass_editorial_review_pending'
                           WHEN POSITION('provider_http_403' IN lower(COALESCE(to_jsonb(j)->>'error',''))) > 0 OR POSITION('sandbox key rejected' IN lower(COALESCE(to_jsonb(j)->>'error',''))) > 0 THEN 'provider_auth_or_permission'
                           WHEN POSITION('provider_http_' IN lower(COALESCE(to_jsonb(j)->>'error',''))) > 0 OR POSITION('shotstack_render_failed' IN lower(COALESCE(to_jsonb(j)->>'error',''))) > 0 THEN 'provider_render_error'
                           WHEN POSITION('audio_stream_missing' IN lower(COALESCE(to_jsonb(j)->>'error',''))) > 0 THEN 'qc_audio_missing'
