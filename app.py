@@ -514,10 +514,13 @@ def bootstrap_test_render_once():
             # Requeue only this named diagnostic bootstrap job after known queue
             # or provider-auth failures, so a deploy can verify the current provider key.
             existing_error = str(existing.get("error") or "")
-            if existing["state"] == "FAILED" and (
+            if existing["state"] in ("FAILED", "QC_FAILED") and (
                 "render_error_KeyError" in existing_error or
                 "shotstack_sandbox_key_rejected" in existing_error or
-                "Shotstack Sandbox request rejected" in existing_error
+                "Shotstack Sandbox request rejected" in existing_error or
+                "render_url_fetch_failed" in existing_error or
+                "ffmpeg_decode_failed" in existing_error or
+                "render_file_invalid_or_incomplete" in existing_error
             ):
                 now = int(time.time())
                 execute(con, "UPDATE jobs SET state='QUEUED',error=NULL,render_url=NULL,provider_id=NULL,updated_at=%s WHERE id=%s",
