@@ -555,13 +555,18 @@ class Handler(BaseHTTPRequestHandler):
                         render_local_test_video(filename)
                         public_url = os.environ.get("IA10_PUBLIC_BASE_URL", "https://ia10-renderer-bridge.onrender.com").rstrip("/") + "/media/" + filename
                         con = connect_db()
+                        # A 403 alone does not prove that a sandbox key was rejected:
+                        # the provider may deny render permission while allowing template reads.
+                        sandbox_rejected = "sandbox key rejected" in detail.lower()
+                        safe_error = "provider_sandbox_key_rejected" if sandbox_rejected else "provider_http_403_forbidden" if exc.code == 403 else "provider_http_%s" % exc.code
+                        con = connect_db()
                         execute(con, "UPDATE jobs SET state=%s,render_url=%s,error=%s,updated_at=%s WHERE id=%s",
-                                ("FAILED", public_url, ("Shotstack Sandbox request rejected; local diagnostic MP4 is not a production render. " + detail)[:180], int(time.time()), job["id"]))
+                                ("FAILED", public_url, ("Provider render rejected; local diagnostic MP4 is not a production render. " + detail)[:180], int(time.time()), job["id"]))
                         con.commit(); con.close()
                         return self.send_json(502, {"processed":True,"id":job["id"],"state":"FAILED",
                             "renderer":"local-test-fallback","diagnostic_url":public_url,
-                            "error":"shotstack_sandbox_key_rejected",
-                            "detail":"A diagnostic MP4 was generated, but the production render failed. This job is not approved for publication."})
+                            "error":safe_error,
+                            "detail":"A local diagnostic MP4 was generated, but the provider render failed. This job is not approved for publication."})
                     except Exception as fallback_exc:
                         # Log a short diagnostic without exposing credentials or request headers.
                         print("diagnostic_fallback_error type=%s detail=%s" % (type(fallback_exc).__name__, str(fallback_exc)[:240]), flush=True)
