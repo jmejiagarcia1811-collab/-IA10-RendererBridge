@@ -406,14 +406,18 @@ def bootstrap_test_render_once():
     try:
         existing = execute(con, "SELECT id,state,error FROM jobs WHERE title=%s LIMIT 1", (title,)).fetchone()
         if existing:
-            # Recover only the bootstrap test that failed because the queue selected
-            # an incomplete row; never requeue a real content job automatically.
-            if existing["state"] == "FAILED" and "render_error_KeyError" in str(existing.get("error") or ""):
+            # Requeue only this named diagnostic bootstrap job after known queue
+            # or provider-auth failures, so a deploy can verify the current provider key.
+            existing_error = str(existing.get("error") or "")
+            if existing["state"] == "FAILED" and (
+                "render_error_KeyError" in existing_error or
+                "shotstack_sandbox_key_rejected" in existing_error
+            ):
                 now = int(time.time())
                 execute(con, "UPDATE jobs SET state='QUEUED',error=NULL,render_url=NULL,provider_id=NULL,updated_at=%s WHERE id=%s",
                         (now, existing["id"]))
                 con.commit()
-                print("bootstrap_test_render requeued_after_queue_bug id=%s" % existing["id"], flush=True)
+                print("bootstrap_test_render requeued_diagnostic_retry id=%s" % existing["id"], flush=True)
             else:
                 print("bootstrap_test_render already_exists id=%s state=%s" % (existing["id"], existing["state"]), flush=True)
             return
