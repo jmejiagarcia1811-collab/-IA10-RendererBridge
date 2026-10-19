@@ -180,7 +180,8 @@ class Handler(BaseHTTPRequestHandler):
                 diagnostic_stage = "failure_categories"
                 failure_rows = execute(con, """SELECT
                     CASE
-                      WHEN POSITION('provider_http_403' IN lower(COALESCE(to_jsonb(j)->>'error',''))) > 0 OR POSITION('sandbox key rejected' IN lower(COALESCE(to_jsonb(j)->>'error',''))) > 0 THEN 'provider_auth_or_permission'
+                      WHEN POSITION('provider_http_403' IN lower(COALESCE(to_jsonb(j)->>'error',''))) > 0 THEN 'provider_http_403_forbidden'
+                          WHEN POSITION('sandbox key rejected' IN lower(COALESCE(to_jsonb(j)->>'error',''))) > 0 THEN 'provider_sandbox_key_rejected'
                       WHEN POSITION('provider_http_' IN lower(COALESCE(to_jsonb(j)->>'error',''))) > 0 OR POSITION('shotstack_render_failed' IN lower(COALESCE(to_jsonb(j)->>'error',''))) > 0 THEN 'provider_render_error'
                       WHEN POSITION('audio_stream_missing' IN lower(COALESCE(to_jsonb(j)->>'error',''))) > 0 THEN 'qc_audio_missing'
                       WHEN POSITION('render_url_' IN lower(COALESCE(to_jsonb(j)->>'error',''))) > 0 OR POSITION('download_failed' IN lower(COALESCE(to_jsonb(j)->>'error',''))) > 0 THEN 'qc_render_url'
@@ -242,7 +243,8 @@ class Handler(BaseHTTPRequestHandler):
                     rows = execute(con, """SELECT id, state, COALESCE(updated_at,0) AS updated_at,
                         CASE
                           WHEN state='QC_PENDING_REVIEW' THEN 'technical_qc_pass_editorial_review_pending'
-                          WHEN lower(COALESCE(error,'')) LIKE '%provider_http_403%' OR lower(COALESCE(error,'')) LIKE '%sandbox key rejected%' THEN 'provider_auth_or_permission'
+                          WHEN lower(COALESCE(error,'')) LIKE '%provider_http_403%' THEN 'provider_http_403_forbidden'
+                          WHEN lower(COALESCE(error,'')) LIKE '%sandbox key rejected%' THEN 'provider_sandbox_key_rejected'
                           WHEN lower(COALESCE(error,'')) LIKE '%provider_http_%' OR lower(COALESCE(error,'')) LIKE '%shotstack_render_failed%' THEN 'provider_render_error'
                           WHEN lower(COALESCE(error,'')) LIKE '%audio_stream_missing%' THEN 'qc_audio_missing'
                           WHEN lower(COALESCE(error,'')) LIKE '%render_url_%' OR lower(COALESCE(error,'')) LIKE '%download_failed%' THEN 'qc_render_url'
