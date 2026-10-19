@@ -367,7 +367,8 @@ class Handler(BaseHTTPRequestHandler):
                     "published":False,
                     "note":"QC decision recorded. READY_TO_PUBLISH is not an instruction to publish automatically."
                 })
-            except Exception:
+            except Exception as exc:
+                print("editorial_qc_error type=%s" % type(exc).__name__, flush=True)
                 return self.send_json(503, {"error":"database_unavailable"})
         
         if path == "/jobs/process-next":
