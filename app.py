@@ -371,9 +371,16 @@ def technical_video_qc(url):
                 # Keep a few sanitized FFmpeg error lines for diagnosis; strip signed URLs/tokens.
                 import re
                 safe_lines = []
+                diagnostic_markers = (
+                    "http error", "server returned", "403 forbidden", "404 not found",
+                    "timed out", "connection refused", "connection reset", "tls error",
+                    "error opening input", "failed to open", "moov atom not found",
+                    "invalid data found", "could not find codec parameters",
+                    "protocol not found", "operation not permitted", "network is unreachable"
+                )
                 for line in output.splitlines():
                     ll = line.lower()
-                    if any(word in ll for word in ("error", "failed", "timed out", "tls", "connection", "http")):
+                    if any(marker in ll for marker in diagnostic_markers):
                         line = re.sub(r"https?://[^\\s'\"<>]+", "[URL_REDACTED]", line)
                         line = re.sub(r"(?i)(token|signature|key)=([^&\\s]+)", r"\\1=[REDACTED]", line)
                         safe_lines.append(line[:180])
