@@ -219,7 +219,17 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/jobs/process-next":
             try:
                 con = connect_db()
-                job = execute(con, "SELECT * FROM jobs WHERE state='QUEUED' ORDER BY id LIMIT 1").fetchone()
+                queued = execute(con, "SELECT id,state,title FROM jobs WHERE state='QUEUED' ORDER BY id LIMIT 5").fetchall()
+                db_fingerprint = "postgres" if DATABASE_URL else "sqlite"
+                if DATABASE_URL:
+                    try:
+                        import hashlib
+                        db_fingerprint = hashlib.sha256(DATABASE_URL.encode("utf-8")).hexdigest()[:12]
+                    except Exception:
+                        db_fingerprint = "postgres"
+                print("queue_probe db=%s queued_count_sample=%s first=%s" % (
+                    db_fingerprint, len(queued), str(dict(queued[0]) if queued else None)[:240]), flush=True)
+                job = queued[0] if queued else None
                 if not job:
                     con.close()
                     return self.send_json(200, {"processed":False,"note":"queue_empty"})
@@ -399,10 +409,17 @@ def bootstrap_test_render_once():
             print("bootstrap_test_render already_exists id=%s" % existing["id"], flush=True)
             return
         now = int(time.time())
-        execute(con, "INSERT INTO jobs(title,edit_json,state,created_at,updated_at) VALUES(%s,%s,%s,%s,%s)",
-                (title, json.dumps(edit), "QUEUED", now, now))
+        inserted = execute(con, "INSERT INTO jobs(title,edit_json,state,created_at,updated_at) VALUES(%s,%s,%s,%s,%s) RETURNING id",
+                (title, json.dumps(edit), "QUEUED", now, now)).fetchone()
         con.commit()
-        print("bootstrap_test_render queued_once", flush=True)
+        db_fingerprint = "postgres" if DATABASE_URL else "sqlite"
+        if DATABASE_URL:
+            try:
+                import hashlib
+                db_fingerprint = hashlib.sha256(DATABASE_URL.encode("utf-8")).hexdigest()[:12]
+            except Exception:
+                db_fingerprint = "postgres"
+        print("bootstrap_test_render queued_once id=%s db=%s" % (inserted["id"], db_fingerprint), flush=True)
     finally:
         con.close()
 
