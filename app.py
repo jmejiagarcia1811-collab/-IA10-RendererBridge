@@ -229,73 +229,72 @@ class Handler(BaseHTTPRequestHandler):
               "note":"Health does not prove provider validity, video QC, or publication."
             })
             return
-        if path == "/queue-summary" and self.command == "GET":
-            # Public, read-only queue overview: identifiers and coarse categories only.
-            # Never expose titles, raw errors, provider IDs, signed URLs, or credentials.
-            try:
-                con = connect_db()
-                rows = execute(con, """SELECT id, state, updated_at,
-                    CASE
-                      WHEN lower(COALESCE(error,'')) LIKE '%provider_http_403%' OR lower(COALESCE(error,'')) LIKE '%sandbox key rejected%' THEN 'provider_auth_or_permission'
-                      WHEN lower(COALESCE(error,'')) LIKE '%provider_http_%' OR lower(COALESCE(error,'')) LIKE '%shotstack_render_failed%' THEN 'provider_render_error'
-                      WHEN lower(COALESCE(error,'')) LIKE '%audio_stream_missing%' THEN 'qc_audio_missing'
-                      WHEN lower(COALESCE(error,'')) LIKE '%render_url_%' OR lower(COALESCE(error,'')) LIKE '%download_failed%' THEN 'qc_render_url'
-                      WHEN lower(COALESCE(error,'')) LIKE '%decode%' OR lower(COALESCE(error,'')) LIKE '%invalid_or_incomplete%' THEN 'qc_decode'
-                      WHEN lower(COALESCE(error,'')) LIKE '%duration_out_of_range%' OR lower(COALESCE(error,'')) LIKE '%not_portrait%' OR lower(COALESCE(error,'')) LIKE '%dimensions_missing%' THEN 'qc_format'
-                      WHEN COALESCE(error,'') = '' THEN 'no_error_detail'
-                      ELSE 'other'
-                    END AS category,
-                    (render_url IS NOT NULL AND render_url <> '') AS render_url_available
-                    FROM jobs
-                    WHERE state IN ('FAILED','QC_FAILED','QC_PENDING_REVIEW')
-                    ORDER BY updated_at DESC, id DESC LIMIT 100""").fetchall()
-                con.close()
-                jobs = [{"id":int(row["id"]), "state":str(row["state"]),
-                         "updated_at":int(row["updated_at"]), "category":str(row["category"]),
-                         "render_url_available":bool(row["render_url_available"])} for row in rows]
-                counts = {}
-                for job in jobs:
-                    key = job["state"] + ":" + job["category"]
-                    counts[key] = counts.get(key, 0) + 1
-                return self.send_json(200, {"read_only":True, "jobs":jobs, "counts":counts,
-                                            "note":"No job state changed. This endpoint exposes only job IDs, states, coarse categories and render-URL availability."})
-            except Exception:
-                return self.send_json(503, {"error":"queue_summary_unavailable"})
-
-        if path == "/queue-diagnostics" and self.command == "GET":
-            # Authenticated, read-only diagnostics. Never return raw errors, titles,
-            # provider IDs, render URLs, edit payloads, or credentials.
-            if not self.authorized():
+        if path in ("/queue-summary", "/queue-diagnostics") and self.command == "GET":
+            private_diagnostics = path == "/queue-diagnostics"
+            if private_diagnostics and not self.authorized():
                 return self.send_json(401, {"error":"unauthorized"})
+            # Read-only, schema-tolerant queue triage. Postgres JSON conversion lets
+            # legacy rows omit optional columns without failing the whole endpoint.
+            con = None
             try:
                 con = connect_db()
-                rows = execute(con, """SELECT id, state, updated_at,
-                    CASE
-                      WHEN lower(COALESCE(error,'')) LIKE '%provider_http_403%' OR lower(COALESCE(error,'')) LIKE '%sandbox key rejected%' THEN 'provider_auth_or_permission'
-                      WHEN lower(COALESCE(error,'')) LIKE '%provider_http_%' OR lower(COALESCE(error,'')) LIKE '%shotstack_render_failed%' THEN 'provider_render_error'
-                      WHEN lower(COALESCE(error,'')) LIKE '%audio_stream_missing%' THEN 'qc_audio_missing'
-                      WHEN lower(COALESCE(error,'')) LIKE '%render_url_%' OR lower(COALESCE(error,'')) LIKE '%download_failed%' THEN 'qc_render_url'
-                      WHEN lower(COALESCE(error,'')) LIKE '%decode%' OR lower(COALESCE(error,'')) LIKE '%invalid_or_incomplete%' THEN 'qc_decode'
-                      WHEN lower(COALESCE(error,'')) LIKE '%duration_out_of_range%' OR lower(COALESCE(error,'')) LIKE '%not_portrait%' OR lower(COALESCE(error,'')) LIKE '%dimensions_missing%' THEN 'qc_format'
-                      WHEN COALESCE(error,'') = '' THEN 'no_error_detail'
-                      ELSE 'other'
-                    END AS category,
-                    (render_url IS NOT NULL AND render_url <> '') AS render_url_available
-                    FROM jobs
-                    WHERE state IN ('FAILED','QC_FAILED','QC_PENDING_REVIEW')
-                    ORDER BY updated_at DESC, id DESC LIMIT 100""").fetchall()
-                con.close()
-                jobs = [{"id":int(row["id"]), "state":str(row["state"]),
-                         "updated_at":int(row["updated_at"]), "category":str(row["category"]),
-                         "render_url_available":bool(row["render_url_available"])} for row in rows]
+                if isinstance(con, sqlite3.Connection):
+                    rows = execute(con, """SELECT id, state, COALESCE(updated_at,0) AS updated_at,
+                        CASE
+                          WHEN lower(COALESCE(error,'')) LIKE '%provider_http_403%' OR lower(COALESCE(error,'')) LIKE '%sandbox key rejected%' THEN 'provider_auth_or_permission'
+                          WHEN lower(COALESCE(error,'')) LIKE '%provider_http_%' OR lower(COALESCE(error,'')) LIKE '%shotstack_render_failed%' THEN 'provider_render_error'
+                          WHEN lower(COALESCE(error,'')) LIKE '%audio_stream_missing%' THEN 'qc_audio_missing'
+                          WHEN lower(COALESCE(error,'')) LIKE '%render_url_%' OR lower(COALESCE(error,'')) LIKE '%download_failed%' THEN 'qc_render_url'
+                          WHEN lower(COALESCE(error,'')) LIKE '%decode%' OR lower(COALESCE(error,'')) LIKE '%invalid_or_incomplete%' THEN 'qc_decode'
+                          WHEN lower(COALESCE(error,'')) LIKE '%duration_out_of_range%' OR lower(COALESCE(error,'')) LIKE '%not_portrait%' OR lower(COALESCE(error,'')) LIKE '%dimensions_missing%' THEN 'qc_format'
+                          WHEN COALESCE(error,'') = '' THEN 'no_error_detail'
+                          ELSE 'other'
+                        END AS category,
+                        (render_url IS NOT NULL AND render_url <> '') AS render_url_available
+                        FROM jobs WHERE state IN ('FAILED','QC_FAILED','QC_PENDING_REVIEW')
+                        ORDER BY updated_at DESC, id DESC LIMIT 100""").fetchall()
+                else:
+                    rows = execute(con, """SELECT
+                        COALESCE(to_jsonb(j)->>'id','0') AS id,
+                        COALESCE(to_jsonb(j)->>'state','UNKNOWN') AS state,
+                        COALESCE(to_jsonb(j)->>'updated_at','0') AS updated_at,
+                        CASE
+                          WHEN POSITION('provider_http_403' IN lower(COALESCE(to_jsonb(j)->>'error',''))) > 0 OR POSITION('sandbox key rejected' IN lower(COALESCE(to_jsonb(j)->>'error',''))) > 0 THEN 'provider_auth_or_permission'
+                          WHEN POSITION('provider_http_' IN lower(COALESCE(to_jsonb(j)->>'error',''))) > 0 OR POSITION('shotstack_render_failed' IN lower(COALESCE(to_jsonb(j)->>'error',''))) > 0 THEN 'provider_render_error'
+                          WHEN POSITION('audio_stream_missing' IN lower(COALESCE(to_jsonb(j)->>'error',''))) > 0 THEN 'qc_audio_missing'
+                          WHEN POSITION('render_url_' IN lower(COALESCE(to_jsonb(j)->>'error',''))) > 0 OR POSITION('download_failed' IN lower(COALESCE(to_jsonb(j)->>'error',''))) > 0 THEN 'qc_render_url'
+                          WHEN POSITION('decode' IN lower(COALESCE(to_jsonb(j)->>'error',''))) > 0 OR POSITION('invalid_or_incomplete' IN lower(COALESCE(to_jsonb(j)->>'error',''))) > 0 THEN 'qc_decode'
+                          WHEN POSITION('duration_out_of_range' IN lower(COALESCE(to_jsonb(j)->>'error',''))) > 0 OR POSITION('not_portrait' IN lower(COALESCE(to_jsonb(j)->>'error',''))) > 0 OR POSITION('dimensions_missing' IN lower(COALESCE(to_jsonb(j)->>'error',''))) > 0 THEN 'qc_format'
+                          WHEN COALESCE(to_jsonb(j)->>'error','') = '' THEN 'no_error_detail'
+                          ELSE 'other'
+                        END AS category,
+                        (COALESCE(to_jsonb(j)->>'render_url','') <> '') AS render_url_available
+                        FROM jobs j
+                        WHERE COALESCE(to_jsonb(j)->>'state','') IN ('FAILED','QC_FAILED','QC_PENDING_REVIEW')
+                        ORDER BY CASE WHEN COALESCE(to_jsonb(j)->>'id','') ~ '^[0-9]+$' THEN (to_jsonb(j)->>'id')::bigint ELSE 0 END DESC LIMIT 100""").fetchall()
+                jobs = []
+                for row in rows:
+                    try: job_id = int(row["id"] or 0)
+                    except (ValueError, TypeError): job_id = 0
+                    try: updated_at = int(row["updated_at"] or 0)
+                    except (ValueError, TypeError): updated_at = 0
+                    jobs.append({"id":job_id, "state":str(row["state"]), "updated_at":updated_at,
+                                 "category":str(row["category"]), "render_url_available":bool(row["render_url_available"])})
                 counts = {}
                 for job in jobs:
                     key = job["state"] + ":" + job["category"]
                     counts[key] = counts.get(key, 0) + 1
-                return self.send_json(200, {"read_only":True, "jobs":jobs, "counts":counts,
-                                            "note":"No job state changed. QC_PENDING_REVIEW requires human review."})
-            except Exception:
-                return self.send_json(503, {"error":"queue_diagnostics_unavailable"})
+                payload = {"read_only":True, "jobs":jobs, "counts":counts,
+                           "note":"No job state changed. QC_PENDING_REVIEW requires human review." if private_diagnostics else
+                                  "No job state changed. Only job IDs, states, coarse categories and render-URL availability are exposed."}
+                return self.send_json(200, payload)
+            except Exception as exc:
+                print("queue_readonly_diagnostics_failed endpoint=%s type=%s" % (path, type(exc).__name__), flush=True)
+                return self.send_json(503, {"error":"queue_diagnostics_unavailable" if private_diagnostics else "queue_summary_unavailable"})
+            finally:
+                if con is not None:
+                    try: con.close()
+                    except Exception: pass
 
         if path == "/bootstrap-test-video" and self.command == "GET":
             # Public, read-only access to the latest diagnostic render only.
