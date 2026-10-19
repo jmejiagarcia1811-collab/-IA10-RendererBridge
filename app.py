@@ -219,7 +219,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/jobs/process-next":
             try:
                 con = connect_db()
-                queued = execute(con, "SELECT id,state,title FROM jobs WHERE state='QUEUED' ORDER BY id LIMIT 5").fetchall()
+                queued = execute(con, "SELECT * FROM jobs WHERE state='QUEUED' ORDER BY id LIMIT 5").fetchall()
                 db_fingerprint = "postgres" if DATABASE_URL else "sqlite"
                 if DATABASE_URL:
                     try:
@@ -404,9 +404,18 @@ def bootstrap_test_render_once():
     }
     con = connect_db()
     try:
-        existing = execute(con, "SELECT id FROM jobs WHERE title=%s LIMIT 1", (title,)).fetchone()
+        existing = execute(con, "SELECT id,state,error FROM jobs WHERE title=%s LIMIT 1", (title,)).fetchone()
         if existing:
-            print("bootstrap_test_render already_exists id=%s" % existing["id"], flush=True)
+            # Recover only the bootstrap test that failed because the queue selected
+            # an incomplete row; never requeue a real content job automatically.
+            if existing["state"] == "FAILED" and "render_error_KeyError" in str(existing.get("error") or ""):
+                now = int(time.time())
+                execute(con, "UPDATE jobs SET state='QUEUED',error=NULL,render_url=NULL,provider_id=NULL,updated_at=%s WHERE id=%s",
+                        (now, existing["id"]))
+                con.commit()
+                print("bootstrap_test_render requeued_after_queue_bug id=%s" % existing["id"], flush=True)
+            else:
+                print("bootstrap_test_render already_exists id=%s state=%s" % (existing["id"], existing["state"]), flush=True)
             return
         now = int(time.time())
         inserted = execute(con, "INSERT INTO jobs(title,edit_json,state,created_at,updated_at) VALUES(%s,%s,%s,%s,%s) RETURNING id",
