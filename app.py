@@ -176,8 +176,7 @@ class Handler(BaseHTTPRequestHandler):
             test_render = {"state": "unknown", "render_url_available": False, "error": None}
             con = None
             diagnostic_stage = "database_connect"
-            try:
-                con = connect_db()                db_ok = True
+            try:                con = connect_db()                db_ok = True
                 diagnostic_stage = "queue_counts"
                 rows = execute(con, "SELECT state, COUNT(*) AS count FROM jobs GROUP BY state").fetchall()
                 queue_counts = {str(row["state"]): int(row["count"]) for row in rows}
@@ -356,8 +355,7 @@ class Handler(BaseHTTPRequestHandler):
                     print("diagnostic_media_regeneration_failed=%s" % str(exc)[:180], flush=True)
                     return self.send_json(503, {"error":"diagnostic_media_regeneration_failed"})
             self.send_response(200)
-            self.send_header("Content-Type", "video/mp4")
-            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Content-Type", "video/mp4")            self.send_header("Content-Length", str(len(data)))
             self.send_header("Cache-Control", "no-store")            self.end_headers()
             self.wfile.write(data)
             return
@@ -518,6 +516,36 @@ class Handler(BaseHTTPRequestHandler):
                 con.commit(); con.close()
                 print("queue_job_rejected reason=invalid_job_edit_schema", flush=True)
                 return self.send_json(422, {"processed":True,"id":job["id"],"state":"FAILED","error":"invalid_job_edit_schema"})
+            local_spec = edit_payload.get("local_render") if isinstance(edit_payload, dict) else None
+            local_enabled = os.environ.get("IA10_LOCAL_RENDER_ENABLED", "").strip().lower() in ("1", "true", "yes")
+            if local_enabled and isinstance(local_spec, dict) and not str(job["title"]).startswith("IA10_BOOTSTRAP_TEST_RENDER"):
+                try:
+                    filename = "local-%s.mp4" % job["id"]
+                    render_local_content(job["title"], local_spec, filename, MEDIA_DIR)
+                    public_url = os.environ.get("IA10_PUBLIC_BASE_URL", "https://ia10-renderer-bridge.onrender.com").rstrip("/") + "/media/" + filename
+                    passed, qc_detail = technical_video_qc(public_url)
+                    now = int(time.time())
+                    new_state = "QC_PENDING_REVIEW" if passed else "QC_FAILED"
+                    con = connect_db()
+                    execute(con, "UPDATE jobs SET state=%s,provider_id=%s,render_url=%s,error=%s,updated_at=%s WHERE id=%s",
+                            (new_state, "local-ffmpeg-edge-tts", public_url,
+                             ("local_renderer_" + qc_detail)[:180], now, job["id"]))
+                    con.commit(); con.close()
+                    print("local_renderer id=%s state=%s qc=%s" % (job["id"], new_state, qc_detail[:120]), flush=True)
+                    return self.send_json(200 if passed else 502, {
+                        "processed":True,"id":job["id"],"state":new_state,
+                        "renderer":"local-ffmpeg-edge-tts","render_url":public_url,
+                        "technical_qc":qc_detail,
+                        "note":"A narrated local video was rendered. Editorial review is still required; nothing was published."
+                    })
+                except Exception as local_exc:
+                    print("local_renderer_failed id=%s type=%s detail=%s" % (
+                        job["id"], type(local_exc).__name__, str(local_exc)[:160]), flush=True)
+                    con = connect_db()
+                    execute(con, "UPDATE jobs SET state='FAILED',error=%s,updated_at=%s WHERE id=%s",
+                            ("local_renderer_failed_" + type(local_exc).__name__)[:180], int(time.time()), job["id"])
+                    con.commit(); con.close()
+                    return self.send_json(502, {"processed":True,"id":job["id"],"state":"FAILED","error":"local_renderer_failed"})
             try:
                 result = submit_render(edit_payload)
                 provider_id = (result.get("response") or {}).get("id") or (result.get("data") or {}).get("id") or ""
@@ -536,8 +564,7 @@ class Handler(BaseHTTPRequestHandler):
                     try:
                         error_json = json.loads(raw_error)
                         candidates = [error_json.get("message"), error_json.get("error"), error_json.get("status")]
-                        response_obj = error_json.get("response")
-                        if isinstance(response_obj, dict):                            candidates.extend([response_obj.get("message"), response_obj.get("error")])
+                        response_obj = error_json.get("response")                        if isinstance(response_obj, dict):                            candidates.extend([response_obj.get("message"), response_obj.get("error")])
                         provider_hint = " ".join(str(v) for v in candidates if isinstance(v, (str, int)) and str(v).strip())
                     except Exception:
                         provider_hint = ""
@@ -716,8 +743,7 @@ def technical_video_qc(url):
                                   "protocol", "not found", "forbidden", "unreachable", "permission")
             for line in output.splitlines():
                 if any(marker in line.lower() for marker in diagnostic_markers):
-                    line = re.sub(r"https?://[^\\s'\"<>]+", "[URL_REDACTED]", line)
-                    line = re.sub(r"(?i)(token|signature|key)=([^&\\s]+)", r"\\1=[REDACTED]", line)
+                    line = re.sub(r"https?://[^\\s'\"<>]+", "[URL_REDACTED]", line)                    line = re.sub(r"(?i)(token|signature|key)=([^&\\s]+)", r"\\1=[REDACTED]", line)
                     safe_lines.append(line[:180])
             if safe_lines:
                 print("technical_qc_decode_detail " + " | ".join(safe_lines[-5:])[:600], flush=True)
@@ -897,21 +923,3 @@ def background_queue_worker():
                 payload = response.read(1000).decode("utf-8", "replace")
                 print("queue_worker status=%s result=%s" % (response.status, payload), flush=True)
         except urllib.error.HTTPError as exc:
-            try:
-                raw = exc.read(4096).decode("utf-8", "replace")
-                try: payload = json.loads(raw)
-                except Exception: payload = {}
-                safe = {k: payload.get(k) for k in ("error", "state", "renderer", "diagnostic_url", "detail") if isinstance(payload, dict) and isinstance(payload.get(k), (str, int, bool))}
-                print("queue_worker_http_error status=%s response=%s" % (exc.code, json.dumps(safe, ensure_ascii=True)[:1200]), flush=True)
-            except Exception:
-                print("queue_worker_http_error status=%s response_parse_failed" % exc.code, flush=True)
-        except Exception as exc:
-            print("queue_worker_error type=%s" % type(exc).__name__, flush=True)
-
-if __name__ == "__main__":
-    connect_db().close()
-    check_shotstack_credentials()
-    recover_interrupted_bootstrap_jobs()
-    bootstrap_test_render_once()
-    threading.Thread(target=background_queue_worker, name="ia10-queue-worker", daemon=True).start()
-    ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()
