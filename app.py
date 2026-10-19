@@ -144,6 +144,7 @@ class Handler(BaseHTTPRequestHandler):
             db_mode = "postgres" if DATABASE_URL else "sqlite-local-ephemeral"
             db_ok = False
             queue_counts = {}
+            failure_categories = {}
             test_render = {"state": "unknown", "render_url_available": False, "error": None}
             try:
                 con = connect_db()
