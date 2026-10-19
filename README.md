@@ -17,6 +17,9 @@ Minimal HTTP bridge for submitting Shotstack Edit API render jobs.
 
 ## API
 - `GET /health`: service and configuration status.
-- `POST /render`: expects JSON shaped as `{"edit":{"timeline":{},"output":{}}}` and an `Authorization: Bearer <IA10_BRIDGE_TOKEN>` header.
+- `POST /render`: validates the Shotstack edit payload and queues it for the background worker; returns HTTP 202 with a job ID. Requires `Authorization: Bearer <IA10_BRIDGE_TOKEN>`.
+- `POST /jobs`: same queue, with optional `title`; returns HTTP 201 with a job ID.
+- `GET /jobs`: lists recent jobs (authorized).
+- `GET /jobs/{id}`: checks one job (authorized).
 
 A healthy endpoint does not mean rendering or social publishing is configured.
