@@ -362,7 +362,7 @@ def poll_submitted_render():
         return
     con = connect_db()
     try:
-        job = execute(con, "SELECT id,provider_id,state,render_url,title FROM jobs WHERE (state='RENDER_SUBMITTED' AND provider_id IS NOT NULL AND provider_id<>'') OR (state='RENDERED' AND title LIKE 'IA10_BOOTSTRAP_TEST_RENDER%' AND render_url IS NOT NULL AND render_url<>'') ORDER BY updated_at LIMIT 1").fetchone()
+        job = execute(con, "SELECT id,provider_id,state,render_url,title FROM jobs WHERE (state='RENDER_SUBMITTED' AND provider_id IS NOT NULL AND provider_id<>'') OR (state='RENDERED' AND title LIKE %s AND render_url IS NOT NULL AND render_url<>'') ORDER BY updated_at LIMIT 1", ("IA10_BOOTSTRAP_TEST_RENDER%",)).fetchone()
     finally:
         con.close()
     if not job:
