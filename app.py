@@ -359,6 +359,18 @@ def technical_video_qc(url):
                     dimensions = (int(match.group(1)), int(match.group(2)))
                     break
         if proc.returncode != 0:
+            # Diagnose fetch/codec failures without logging the signed URL or its query string.
+            low = output.lower()
+            if "http error 403" in low or "403 forbidden" in low:
+                return False, "render_url_http_403"
+            if "http error 404" in low or "404 not found" in low:
+                return False, "render_url_http_404"
+            if "http error 5" in low or "server returned 5" in low:
+                return False, "render_url_http_5xx"
+            if "connection refused" in low or "connection timed out" in low or "tls" in low or "https" in low and "error" in low:
+                return False, "render_url_fetch_failed"
+            if "moov atom not found" in low or "invalid data found" in low or "could not find codec parameters" in low:
+                return False, "render_file_invalid_or_incomplete"
             return False, "ffmpeg_decode_failed"
         if not dimensions:
             return False, "video_stream_or_dimensions_missing"
