@@ -553,7 +553,7 @@ def bootstrap_test_render_once():
                     "asset": {
                         "type": "video",
                         "src": "https://samplelib.com/lib/preview/mp4/sample-5s.mp4",
-                        "volume": 0
+                        "volume": 1
                     },
                     "start": 0,
                     "length": 5,
