@@ -326,7 +326,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 con = connect_db()
                 job = execute(con,
-                    "SELECT id,title,state,provider_id,render_url FROM jobs WHERE id=%s",
+                    "SELECT id,title,state,provider_id,render_url,error FROM jobs WHERE id=%s",
                     (int(raw_id),)).fetchone()
                 if not job:
                     con.close()
