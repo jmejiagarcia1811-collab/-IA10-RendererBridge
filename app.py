@@ -367,7 +367,7 @@ def technical_video_qc(url):
                 return False, "render_url_http_404"
             if "http error 5" in low or "server returned 5" in low:
                 return False, "render_url_http_5xx"
-            if "connection refused" in low or "connection timed out" in low or "tls" in low or "https" in low and "error" in low:
+            if any(marker in low for marker in ("http error", "403 forbidden", "404 not found", "server returned", "connection refused", "connection timed out", "connection reset", "tls error", "ssl error", "error opening input", "failed to open", "network is unreachable", "temporary failure in name resolution")):
                 # Keep a few sanitized FFmpeg error lines for diagnosis; strip signed URLs/tokens.
                 import re
                 safe_lines = []
