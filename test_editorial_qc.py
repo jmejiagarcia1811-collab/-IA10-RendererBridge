@@ -139,5 +139,39 @@ class EditorialQCEndpointTests(unittest.TestCase):
         self.assertIn("decoded_portrait_1080x1920", row["error"])
 
 
+class BoundedRetryPolicyTests(unittest.TestCase):
+    def test_provider_403_is_not_retryable(self):
+        exc = urllib.error.HTTPError("https://provider.invalid", 403, "forbidden", {}, None)
+        self.assertFalse(app.is_retryable_render_failure(exc))
+
+    def test_provider_400_is_not_retryable(self):
+        exc = urllib.error.HTTPError("https://provider.invalid", 400, "bad request", {}, None)
+        self.assertFalse(app.is_retryable_render_failure(exc))
+
+    def test_rate_limit_and_server_errors_are_retryable(self):
+        for code in (429, 500, 502, 599):
+            with self.subTest(code=code):
+                exc = urllib.error.HTTPError("https://provider.invalid", code, "temporary", {}, None)
+                self.assertTrue(app.is_retryable_render_failure(exc))
+
+    def test_network_error_is_retryable_but_unexpected_error_is_not(self):
+        self.assertTrue(app.is_retryable_render_failure(urllib.error.URLError("temporary network failure")))
+        self.assertFalse(app.is_retryable_render_failure(RuntimeError("invalid payload")))
+
+    def test_retry_budget_is_bounded(self):
+        self.assertTrue(app.should_retry_render_failure(True, 0))
+        self.assertTrue(app.should_retry_render_failure(True, 1))
+        self.assertTrue(app.should_retry_render_failure(True, 2))
+        self.assertFalse(app.should_retry_render_failure(True, 3))
+        self.assertFalse(app.should_retry_render_failure(False, 0))
+
+    def test_backoff_is_exponential_and_capped(self):
+        self.assertEqual([app.render_retry_delay_seconds(n) for n in range(4)], [60, 120, 240, 480])
+        self.assertEqual(app.render_retry_delay_seconds(8), 900)
+
+    def test_invalid_retry_count_fails_closed(self):
+        self.assertFalse(app.should_retry_render_failure(True, "not-a-number"))
+
+
 if __name__ == "__main__":
     unittest.main()
