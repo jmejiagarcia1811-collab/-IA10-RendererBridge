@@ -362,15 +362,30 @@ class Handler(BaseHTTPRequestHandler):
                         job = execute(con,
                             "SELECT id,title,state,provider_id,render_url,edit_json FROM jobs WHERE id=%s",
                             (job_id,)).fetchone()
-                        if (not job
-                            or str(job["provider_id"] or "") != "local-ffmpeg-edge-tts"
-                            or str(job["state"] or "") not in ("QC_PENDING_REVIEW", "READY_TO_PUBLISH")
-                            or str(job["render_url"] or "").rstrip("/") !=
-                               (os.environ.get("IA10_PUBLIC_BASE_URL", "https://ia10-renderer-bridge.onrender.com").rstrip("/") + "/media/" + filename)):
+                        if not job:
                             return self.send_json(404, {"error":"media_not_found"})
                         edit_payload = json.loads(job["edit_json"])
                         local_spec = edit_payload.get("local_render") if isinstance(edit_payload, dict) else None
-                        if not isinstance(local_spec, dict):
+                        expected_url = os.environ.get("IA10_PUBLIC_BASE_URL", "https://ia10-renderer-bridge.onrender.com").rstrip("/") + "/media/" + filename
+                        # During technical QC the job is still PROCESSING. Permit access only
+                        # after the exact local provider and expected URL have been persisted.
+                        # Final-state access retains the same strict provider/URL checks.
+                        provider_id = str(job["provider_id"] or "")
+                        state = str(job["state"] or "")
+                        render_url = str(job["render_url"] or "").rstrip("/")
+                        processing_local = (
+                            state == "PROCESSING"
+                            and provider_id == "local-ffmpeg-edge-tts"
+                            and render_url == expected_url
+                            and isinstance(local_spec, dict)
+                        )
+                        completed_local = (
+                            state in ("QC_PENDING_REVIEW", "READY_TO_PUBLISH")
+                            and provider_id == "local-ffmpeg-edge-tts"
+                            and render_url == expected_url
+                            and isinstance(local_spec, dict)
+                        )
+                        if not (processing_local or completed_local):
                             return self.send_json(404, {"error":"media_not_found"})
                         render_local_content(str(job["title"]), local_spec, filename, MEDIA_DIR)
                         data = media_path.read_bytes()
@@ -588,12 +603,18 @@ class Handler(BaseHTTPRequestHandler):
                     filename = "local-%s.mp4" % job["id"]
                     render_local_content(job["title"], local_spec, filename, MEDIA_DIR)
                     public_url = os.environ.get("IA10_PUBLIC_BASE_URL", "https://ia10-renderer-bridge.onrender.com").rstrip("/") + "/media/" + filename
+                    # Persist the exact provider and URL before QC fetches /media/<id>.
+                    # This keeps the in-progress media exception narrow and auditable.
+                    con = connect_db()
+                    execute(con, "UPDATE jobs SET provider_id=%s,render_url=%s,updated_at=%s WHERE id=%s AND state='PROCESSING'",
+                            ("local-ffmpeg-edge-tts", public_url, int(time.time()), job["id"]))
+                    con.commit(); con.close()
                     passed, qc_detail = technical_video_qc(public_url)
                     now = int(time.time())
                     new_state = "QC_PENDING_REVIEW" if passed else "QC_FAILED"
                     con = connect_db()
-                    execute(con, "UPDATE jobs SET state=%s,provider_id=%s,render_url=%s,error=%s,updated_at=%s WHERE id=%s",
-                            (new_state, "local-ffmpeg-edge-tts", public_url, ("local_renderer_" + qc_detail)[:180], now, job["id"]))
+                    execute(con, "UPDATE jobs SET state=%s,error=%s,updated_at=%s WHERE id=%s AND state='PROCESSING'",
+                            (new_state, ("local_renderer_" + qc_detail)[:180], now, job["id"]))
                     con.commit(); con.close()
                     print("local_renderer id=%s state=%s qc=%s" % (job["id"], new_state, qc_detail[:120]), flush=True)
                     return self.send_json(200 if passed else 502, {"processed":True,"id":job["id"],"state":new_state,
