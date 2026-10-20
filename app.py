@@ -22,7 +22,8 @@ def connect_db():
         con.execute("""CREATE TABLE IF NOT EXISTS jobs (
           id BIGSERIAL PRIMARY KEY, title TEXT NOT NULL, edit_json TEXT NOT NULL,
           state TEXT NOT NULL, created_at BIGINT NOT NULL, updated_at BIGINT NOT NULL,
-          provider_id TEXT, render_url TEXT, error TEXT, qc_review_json TEXT)""")
+          provider_id TEXT, render_url TEXT, error TEXT, qc_review_json TEXT,
+          retry_count INTEGER NOT NULL DEFAULT 0, retry_after BIGINT NOT NULL DEFAULT 0)""")
     else:
         con = sqlite3.connect(DB_PATH)
         con.row_factory = sqlite3.Row
@@ -32,15 +33,17 @@ def connect_db():
           provider_id TEXT, render_url TEXT, error TEXT, qc_review_json TEXT)""")
     # Add optional columns to existing queue databases without losing jobs.
     if isinstance(con, sqlite3.Connection):
-        for column in ("render_url", "qc_review_json"):
+        for column_definition in ("render_url TEXT", "qc_review_json TEXT", "retry_count INTEGER NOT NULL DEFAULT 0", "retry_after BIGINT NOT NULL DEFAULT 0"):
             try:
-                con.execute("ALTER TABLE jobs ADD COLUMN " + column + " TEXT")
+                con.execute("ALTER TABLE jobs ADD COLUMN " + column_definition)
             except sqlite3.OperationalError as exc:
                 if "duplicate column name" not in str(exc).lower():
                     raise
     else:
         con.execute("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS render_url TEXT")
         con.execute("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS qc_review_json TEXT")
+        con.execute("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS retry_count INTEGER NOT NULL DEFAULT 0")
+        con.execute("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS retry_after BIGINT NOT NULL DEFAULT 0")
     con.commit()
     return con
 
@@ -72,6 +75,27 @@ def validate_editorial_qc(decision, checklist):
     if decision == "reject":
         return True
     return all(checklist.get(key) is True for key in EDITORIAL_QC_CHECKS)
+
+def is_retryable_render_failure(exc):
+    """Retry only transient network errors and provider HTTP 429/5xx responses."""
+    if isinstance(exc, urllib.error.HTTPError):
+        return exc.code == 429 or 500 <= exc.code <= 599
+    return isinstance(exc, urllib.error.URLError)
+
+
+def should_retry_render_failure(retryable, retry_count, max_retries=3):
+    """retry_count is the persisted attempt count before the next attempt."""
+    try:
+        count = max(0, int(retry_count or 0))
+    except (TypeError, ValueError):
+        return False
+    return bool(retryable) and count < max_retries
+
+
+def render_retry_delay_seconds(retry_count, base_delay=60, max_delay=900):
+    """Bounded exponential delay: 60s, 120s, 240s by default."""
+    count = max(0, int(retry_count or 0))
+    return min(max_delay, base_delay * (2 ** count))
 
 def render_local_test_video(filename):
     """Create a clearly labelled diagnostic MP4; never used for production jobs."""
@@ -528,7 +552,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/jobs/process-next":
             try:
                 con = connect_db()
-                queued = execute(con, "SELECT * FROM jobs WHERE state='QUEUED' ORDER BY id LIMIT 5").fetchall()
+                queued = execute(con, "SELECT * FROM jobs WHERE state='QUEUED' AND COALESCE(retry_after,0) <= %s ORDER BY id LIMIT 5", (int(time.time()),)).fetchall()
                 db_fingerprint = "postgres" if DATABASE_URL else "sqlite"
                 if DATABASE_URL:
                     try:
@@ -574,7 +598,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not job:
                     con.close()
                     return self.send_json(200, {"processed":False,"note":"queue_empty"})
-                execute(con, "UPDATE jobs SET state='PROCESSING',updated_at=%s WHERE id=%s", (int(time.time()),job["id"]))
+                execute(con, "UPDATE jobs SET state='PROCESSING',retry_count=COALESCE(retry_count,0)+1,updated_at=%s WHERE id=%s", (int(time.time()),job["id"]))
                 con.commit(); con.close()
             except Exception:
                 return self.send_json(503, {"error":"database_unavailable"})
@@ -628,6 +652,7 @@ class Handler(BaseHTTPRequestHandler):
                             ("local_renderer_failed_" + type(local_exc).__name__)[:180], int(time.time()), job["id"])
                     con.commit(); con.close()
                     return self.send_json(502, {"processed":True,"id":job["id"],"state":"FAILED","error":"local_renderer_failed"})
+            retryable_failure = False
             try:
                 result = submit_render(edit_payload)
                 provider_id = (result.get("response") or {}).get("id") or (result.get("data") or {}).get("id") or ""
@@ -639,6 +664,7 @@ class Handler(BaseHTTPRequestHandler):
                 con.commit(); con.close()
                 return self.send_json(200, {"processed":True,"id":job["id"],"state":"RENDER_SUBMITTED","provider_response":result})
             except urllib.error.HTTPError as exc:
+                retryable_failure = is_retryable_render_failure(exc)
                 # Keep provider diagnostics useful without logging request headers or API keys.
                 provider_hint = ""
                 try:
@@ -683,17 +709,27 @@ class Handler(BaseHTTPRequestHandler):
                         print("diagnostic_fallback_error type=%s detail=%s" % (type(fallback_exc).__name__, str(fallback_exc)[:240]), flush=True)
                         detail += "; local_test_fallback_failed_" + type(fallback_exc).__name__
             except Exception as exc:
+                retryable_failure = is_retryable_render_failure(exc)
                 detail = "render_error_" + type(exc).__name__
                 # Traceback gives the failing code location; do not log locals, headers, or credentials.
                 print("render_exception_traceback\\n" + traceback.format_exc()[-3000:], flush=True)
+            retry = should_retry_render_failure(retryable_failure, job["retry_count"])
+            retry_delay = render_retry_delay_seconds(job["retry_count"]) if retry else 0
+            new_state = "QUEUED" if retry else "FAILED"
+            now = int(time.time())
+            safe_detail = ("auto_retry_after_%ss:" % retry_delay + detail)[:180] if retry else detail[:180]
             try:
                 con = connect_db()
-                execute(con, "UPDATE jobs SET state='FAILED',error=%s,updated_at=%s WHERE id=%s",
-                  (detail,int(time.time()),job["id"]))
+                execute(con, "UPDATE jobs SET state=%s,error=%s,retry_after=%s,updated_at=%s WHERE id=%s",
+                  (new_state,safe_detail,now + retry_delay if retry else 0,now,job["id"]))
                 con.commit(); con.close()
-            except Exception:
-                pass
-            return self.send_json(502, {"error":"render_failed","id":job["id"],"detail":detail})
+                if retry:
+                    print("queue_auto_retry id=%s attempt=%s delay_seconds=%s" %
+                          (job["id"], int(job["retry_count"] or 0) + 1, retry_delay), flush=True)
+            except Exception as retry_exc:
+                print("queue_retry_policy_error type=%s" % type(retry_exc).__name__, flush=True)
+            return self.send_json(502, {"error":"render_failed","id":job["id"],"detail":detail,
+                "retry_scheduled":retry,"retry_after_seconds":retry_delay})
 
         self.send_json(404, {"error":"not_found"})
 
