@@ -14,12 +14,12 @@ import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 
 DEFAULT_FEEDS = [
-    "https://api2.rtve.es/rss/temas_noticias.xml",
-    "https://api2.rtve.es/rss/temas_deportes.xml",
-    "https://api2.rtve.es/rss/temas_ciencia-tecnologia.xml",
-    "https://api2.rtve.es/rss/temas_cultura.xml",
-    "https://api2.rtve.es/rss/temas_navarra.xml",
-    "https://api2.rtve.es/rss/temas_tiempo.xml",
+    "https://www.rtve.es/rss/temas_noticias.xml",
+    "https://www.rtve.es/rss/temas_deportes.xml",
+    "https://www.rtve.es/rss/temas_ciencia-tecnologia.xml",
+    "https://www.rtve.es/rss/temas_cultura.xml",
+    "https://www.rtve.es/rss/temas_navarra.xml",
+    "https://www.rtve.es/rss/temas_tiempo.xml",
 ]
 
 def _clean(value):
