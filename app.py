@@ -1015,15 +1015,19 @@ def rss_intake_worker():
 
 def background_queue_worker():
     """Poll the guarded queue while this free web service is awake."""
-    interval = max(30, int(os.environ.get("IA10_WORKER_INTERVAL_SECONDS", "60")))
+    interval = max(15, int(os.environ.get("IA10_WORKER_INTERVAL_SECONDS", "30")))
     print("queue_worker_started interval=%s provider_key_configured=%s auth_token_configured=%s" % (
         interval, bool(os.environ.get("SHOTSTACK_API_KEY", "").strip()),
         bool(os.environ.get("IA10_BRIDGE_TOKEN", ""))), flush=True)
     while True:
         time.sleep(interval)
         # Prefer the local FFmpeg fallback whenever a sourced local job is queued.
-        # This prevents a broken Shotstack key/poll from delaying the no-provider route.
-        local_pending = has_queued_local_render_job()
+        # A transient database exception must not permanently kill this daemon thread.
+        try:
+            local_pending = has_queued_local_render_job()
+        except Exception as exc:
+            print("queue_worker_guard_error type=%s action=retry_next_cycle" % type(exc).__name__, flush=True)
+            continue
         provider_key = os.environ.get("SHOTSTACK_API_KEY", "").strip()
         if provider_key and not local_pending:
             try:
