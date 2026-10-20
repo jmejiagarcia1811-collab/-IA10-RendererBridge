@@ -56,7 +56,12 @@ def _feed_items(feed_url):
                         break
         pub = _tag(item, "pubDate") or _tag(item, "published") or _tag(item, "updated") or _tag(item, "date")
         try:
-            published = email.utils.parsedate_to_datetime(pub) if pub else None
+            published = None
+            if pub:
+                try:
+                    published = email.utils.parsedate_to_datetime(pub)
+                except Exception:
+                    published = datetime.fromisoformat(pub.replace("Z", "+00:00"))
             if published and published.tzinfo is None:
                 published = published.replace(tzinfo=timezone.utc)
             if published and (now - published.astimezone(timezone.utc)).total_seconds() > 36 * 3600:
