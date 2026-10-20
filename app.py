@@ -33,9 +33,9 @@ def connect_db():
           provider_id TEXT, render_url TEXT, error TEXT, qc_review_json TEXT)""")
     # Add optional columns to existing queue databases without losing jobs.
     if isinstance(con, sqlite3.Connection):
-        for column in ("render_url", "qc_review_json", "retry_count INTEGER NOT NULL DEFAULT 0", "retry_after BIGINT NOT NULL DEFAULT 0"):
+        for column_definition in ("render_url TEXT", "qc_review_json TEXT", "retry_count INTEGER NOT NULL DEFAULT 0", "retry_after BIGINT NOT NULL DEFAULT 0"):
             try:
-                con.execute("ALTER TABLE jobs ADD COLUMN " + column + " TEXT")
+                con.execute("ALTER TABLE jobs ADD COLUMN " + column_definition)
             except sqlite3.OperationalError as exc:
                 if "duplicate column name" not in str(exc).lower():
                     raise
