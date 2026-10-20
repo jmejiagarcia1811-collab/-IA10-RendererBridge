@@ -1021,14 +1021,16 @@ def background_queue_worker():
         bool(os.environ.get("IA10_BRIDGE_TOKEN", ""))), flush=True)
     while True:
         time.sleep(interval)
-        # Shotstack is optional for jobs with an explicit local_render payload.
+        # Prefer the local FFmpeg fallback whenever a sourced local job is queued.
+        # This prevents a broken Shotstack key/poll from delaying the no-provider route.
+        local_pending = has_queued_local_render_job()
         provider_key = os.environ.get("SHOTSTACK_API_KEY", "").strip()
-        if provider_key:
+        if provider_key and not local_pending:
             try:
                 poll_submitted_render()
             except Exception as exc:
                 print("render_poll_worker_error type=%s" % type(exc).__name__, flush=True)
-        elif not has_queued_local_render_job():
+        elif not provider_key and not local_pending:
             continue
         token = os.environ.get("IA10_BRIDGE_TOKEN", "")
         if not token:
