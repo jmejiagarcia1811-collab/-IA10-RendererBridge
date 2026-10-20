@@ -89,7 +89,10 @@ def ingest_rss_once(connect_db, execute):
     configured = os.environ.get("IA10_RSS_FEEDS", "").strip()
     feeds = [x.strip() for x in configured.split(";") if x.strip()] if configured else DEFAULT_FEEDS
     now = int(time.time())
-    print("rss_ingest started feed_count=%s" % len(feeds), flush=True)
+    daily_cap = max(5, min(40, int(os.environ.get("IA10_RSS_DAILY_CAP", "20"))))
+    target_backlog = max(1, min(10, int(os.environ.get("IA10_RSS_QUEUE_TARGET", "3"))))
+    print("rss_ingest started feed_count=%s daily_cap=%s queue_target=%s" %
+          (len(feeds), daily_cap, target_backlog), flush=True)
     con = connect_db()
     created = 0
     skipped = 0
@@ -98,18 +101,27 @@ def ingest_rss_once(connect_db, execute):
         recent = execute(con, "SELECT COUNT(*) AS count FROM jobs WHERE title LIKE %s AND created_at >= %s",
                          ("IA10_RSS_%", now - 86400)).fetchone()
         daily_count = int(recent["count"] or 0)
-        if daily_count >= 5:
-            print("rss_ingest skipped reason=daily_cap count=%s" % daily_count, flush=True)
+        queued = execute(con, "SELECT COUNT(*) AS count FROM jobs WHERE title LIKE %s AND state='QUEUED'",
+                         ("IA10_RSS_%",)).fetchone()
+        queued_count = int(queued["count"] or 0)
+        if queued_count >= target_backlog:
+            print("rss_ingest skipped reason=backlog_sufficient queued=%s target=%s" %
+                  (queued_count, target_backlog), flush=True)
             return
+        if daily_count >= daily_cap:
+            print("rss_ingest skipped reason=daily_cap count=%s cap=%s queued=%s" %
+                  (daily_count, daily_cap, queued_count), flush=True)
+            return
+        needed = target_backlog - queued_count
         for feed_url in feeds:
-            if created + daily_count >= 5:
+            if created >= needed or created + daily_count >= daily_cap:
                 break
             try:
                 print("rss_ingest_feed fetching host=%s" % (urllib.request.urlparse(feed_url).netloc if hasattr(urllib.request, "urlparse") else feed_url.split("/")[2]), flush=True)
                 items = list(_feed_items(feed_url))
                 print("rss_ingest_feed parsed_items=%s" % len(items), flush=True)
                 for headline, summary, source_url in items:
-                    if created + daily_count >= 5:
+                    if created >= needed or created + daily_count >= daily_cap:
                         break
                     digest = hashlib.sha256((source_url + "|" + headline).encode("utf-8")).hexdigest()[:12]
                     title = "IA10_RSS_%s %s" % (digest, headline)
@@ -140,6 +152,6 @@ def ingest_rss_once(connect_db, execute):
             except Exception as exc:
                 errors += 1
                 print("rss_ingest_feed_error type=%s" % type(exc).__name__, flush=True)
-        print("rss_ingest finished created=%s skipped=%s feed_errors=%s" % (created, skipped, errors), flush=True)
+        print("rss_ingest finished created=%s skipped=%s feed_errors=%s queued_before=%s target=%s daily_count_before=%s daily_cap=%s" % (created, skipped, errors, queued_count, target_backlog, daily_count, daily_cap), flush=True)
     finally:
         con.close()
