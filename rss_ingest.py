@@ -45,8 +45,11 @@ def _feed_items(feed_url):
         title = _clean(_tag(item, "title"))
         summary = _clean(_tag(item, "description") or _tag(item, "summary") or _tag(item, "encoded") or _tag(item, "content"))
         link = _tag(item, "link")
-        if link and not link.startswith("http"):
+        if link and not link.startswith(("http://", "https://")):
             link = ""
+        # RTVE's published RSS items may still use legacy HTTP links; upgrade only its own host.
+        if link.startswith("http://www.rtve.es/") or link.startswith("http://api2.rtve.es/"):
+            link = "https://" + link[len("http://"):]
         if not link:
             for child in item:
                 if child.tag.lower().endswith("link"):
