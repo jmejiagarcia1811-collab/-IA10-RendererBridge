@@ -887,6 +887,28 @@ def recover_interrupted_bootstrap_jobs():
     finally:
         con.close()
 
+def recover_stale_processing_jobs():
+    """Requeue work left PROCESSING after a worker/process interruption."""
+    now = int(time.time())
+    # Local renders take seconds; provider requests have bounded timeouts.
+    # A 15-minute grace period avoids touching work that may still be active.
+    cutoff = now - max(900, int(os.environ.get("IA10_STALE_PROCESSING_SECONDS", "900")))
+    con = connect_db()
+    try:
+        cur = execute(
+            con,
+            "UPDATE jobs SET state='QUEUED',error=%s,updated_at=%s "
+            "WHERE state='PROCESSING' AND updated_at < %s",
+            ("requeued_after_stale_processing", now, cutoff))
+        count = cur.rowcount
+        con.commit()
+        if count:
+            print("queue_recovery requeued_stale_processing=%s grace_seconds=%s" %
+                  (count, now - cutoff), flush=True)
+        return count
+    finally:
+        con.close()
+
 def bootstrap_test_render_once():
     """Optionally enqueue one idempotent sandbox render without exposing a public unauthenticated endpoint."""
     if os.environ.get("IA10_BOOTSTRAP_TEST_RENDER", "").strip().lower() not in ("1", "true", "yes"):
@@ -1021,6 +1043,12 @@ def background_queue_worker():
         bool(os.environ.get("IA10_BRIDGE_TOKEN", ""))), flush=True)
     while True:
         time.sleep(interval)
+        # Recover jobs abandoned by a crashed/interrupted request before selecting new work.
+        # Only rows older than the conservative grace period are eligible.
+        try:
+            recover_stale_processing_jobs()
+        except Exception as exc:
+            print("queue_recovery_error type=%s action=retry_next_cycle" % type(exc).__name__, flush=True)
         # Prefer the local FFmpeg fallback whenever a sourced local job is queued.
         # A transient database exception must not permanently kill this daemon thread.
         try:
@@ -1067,6 +1095,7 @@ if __name__ == "__main__":
     connect_db().close()
     check_shotstack_credentials()
     recover_interrupted_bootstrap_jobs()
+    recover_stale_processing_jobs()
     bootstrap_test_render_once()
     local_renderer_smoke_test_once()
     threading.Thread(target=background_queue_worker, name="ia10-queue-worker", daemon=True).start()
