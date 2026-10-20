@@ -961,7 +961,9 @@ def local_renderer_smoke_test_once():
     """Queue one non-publishable local-render smoke test when explicitly enabled."""
     if os.environ.get("IA10_LOCAL_RENDER_SMOKE_TEST", "").strip().lower() not in ("1", "true", "yes"):
         return
-    title = "IA10_LOCAL_RENDER_SMOKE_TEST_V1"
+    run_id = os.environ.get("IA10_LOCAL_RENDER_SMOKE_TEST_RUN_ID", "V1").strip()[:40] or "V1"
+    run_id = "".join(ch for ch in run_id if ch.isalnum() or ch in "-_") or "V1"
+    title = "IA10_LOCAL_RENDER_SMOKE_TEST_" + run_id
     edit = {
         "timeline": {"tracks": []},
         "output": {"format": "mp4", "resolution": "1080", "aspectRatio": "9:16"},
