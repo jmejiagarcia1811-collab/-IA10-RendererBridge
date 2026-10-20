@@ -85,6 +85,7 @@ def ingest_rss_once(connect_db, execute):
     configured = os.environ.get("IA10_RSS_FEEDS", "").strip()
     feeds = [x.strip() for x in configured.split(";") if x.strip()] if configured else DEFAULT_FEEDS
     now = int(time.time())
+    print("rss_ingest started feed_count=%s" % len(feeds), flush=True)
     con = connect_db()
     created = 0
     skipped = 0
@@ -100,6 +101,7 @@ def ingest_rss_once(connect_db, execute):
             if created + daily_count >= 5:
                 break
             try:
+                print("rss_ingest_feed fetching host=%s" % (urllib.request.urlparse(feed_url).netloc if hasattr(urllib.request, "urlparse") else feed_url.split("/")[2]), flush=True)
                 items = list(_feed_items(feed_url))
                 print("rss_ingest_feed parsed_items=%s" % len(items), flush=True)
                 for headline, summary, source_url in items:
