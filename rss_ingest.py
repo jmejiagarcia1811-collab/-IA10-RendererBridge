@@ -14,12 +14,16 @@ import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 
 DEFAULT_FEEDS = [
+    # Keep the direct press-agency feed, then use current Spanish-edition RSS
+    # discovery feeds as fallbacks when legacy RTVE endpoints reject requests
+    # or return empty XML. Headlines are only candidates; factual/editorial QC
+    # remains mandatory before any publication.
     "https://www.europapress.es/rss/rss.aspx?ch=66",
-    "https://api.rtve.es/api/tematicas.rss",
-    "https://api.rtve.es/api/tematicas.xml",
-    "https://www.rtve.es/rss/temas_noticias.xml",
-    "https://www.rtve.es/rss/temas_deportes.xml",
-    "https://www.rtve.es/rss/temas_cultura.xml",
+    "https://news.google.com/rss?hl=es&gl=ES&ceid=ES:es",
+    "https://news.google.com/rss/search?q=deportes+when%3A1d&hl=es&gl=ES&ceid=ES%3Aes",
+    "https://news.google.com/rss/search?q=%28inteligencia+artificial+OR+tecnolog%C3%ADa%29+when%3A1d&hl=es&gl=ES&ceid=ES%3Aes",
+    "https://news.google.com/rss/search?q=%28m%C3%BAsica+OR+cine+OR+entretenimiento%29+when%3A1d&hl=es&gl=ES&ceid=ES%3Aes",
+    "https://news.google.com/rss/search?q=%28F%C3%B3rmula+1+OR+F1%29+when%3A1d&hl=es&gl=ES&ceid=ES%3Aes",
 ]
 
 def _clean(value):
