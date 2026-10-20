@@ -76,6 +76,27 @@ def validate_editorial_qc(decision, checklist):
         return True
     return all(checklist.get(key) is True for key in EDITORIAL_QC_CHECKS)
 
+def is_retryable_render_failure(exc):
+    """Retry only transient network errors and provider HTTP 429/5xx responses."""
+    if isinstance(exc, urllib.error.HTTPError):
+        return exc.code == 429 or 500 <= exc.code <= 599
+    return isinstance(exc, urllib.error.URLError)
+
+
+def should_retry_render_failure(retryable, retry_count, max_retries=3):
+    """retry_count is the persisted attempt count before the next attempt."""
+    try:
+        count = max(0, int(retry_count or 0))
+    except (TypeError, ValueError):
+        return False
+    return bool(retryable) and count < max_retries
+
+
+def render_retry_delay_seconds(retry_count, base_delay=60, max_delay=900):
+    """Bounded exponential delay: 60s, 120s, 240s by default."""
+    count = max(0, int(retry_count or 0))
+    return min(max_delay, base_delay * (2 ** count))
+
 def render_local_test_video(filename):
     """Create a clearly labelled diagnostic MP4; never used for production jobs."""
     from PIL import Image, ImageDraw, ImageFont
@@ -643,7 +664,7 @@ class Handler(BaseHTTPRequestHandler):
                 con.commit(); con.close()
                 return self.send_json(200, {"processed":True,"id":job["id"],"state":"RENDER_SUBMITTED","provider_response":result})
             except urllib.error.HTTPError as exc:
-                retryable_failure = (exc.code == 429 or exc.code >= 500)
+                retryable_failure = is_retryable_render_failure(exc)
                 # Keep provider diagnostics useful without logging request headers or API keys.
                 provider_hint = ""
                 try:
@@ -688,12 +709,12 @@ class Handler(BaseHTTPRequestHandler):
                         print("diagnostic_fallback_error type=%s detail=%s" % (type(fallback_exc).__name__, str(fallback_exc)[:240]), flush=True)
                         detail += "; local_test_fallback_failed_" + type(fallback_exc).__name__
             except Exception as exc:
-                retryable_failure = isinstance(exc, urllib.error.URLError)
+                retryable_failure = is_retryable_render_failure(exc)
                 detail = "render_error_" + type(exc).__name__
                 # Traceback gives the failing code location; do not log locals, headers, or credentials.
                 print("render_exception_traceback\\n" + traceback.format_exc()[-3000:], flush=True)
-            retry = retryable_failure and int(job["retry_count"] or 0) + 1 < 4
-            retry_delay = min(900, 60 * (2 ** max(0, int(job["retry_count"] or 0)))) if retry else 0
+            retry = should_retry_render_failure(retryable_failure, job["retry_count"])
+            retry_delay = render_retry_delay_seconds(job["retry_count"]) if retry else 0
             new_state = "QUEUED" if retry else "FAILED"
             now = int(time.time())
             safe_detail = ("auto_retry_after_%ss:" % retry_delay + detail)[:180] if retry else detail[:180]
