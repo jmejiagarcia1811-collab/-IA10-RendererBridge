@@ -1005,7 +1005,7 @@ def has_queued_local_render_job():
 
 def rss_intake_worker():
     """Periodically enqueue up to five sourced Spanish items per rolling day for review."""
-    interval = max(900, int(os.environ.get("IA10_RSS_INTERVAL_SECONDS", "900")))
+    interval = max(60, int(os.environ.get("IA10_RSS_INTERVAL_SECONDS", "60")))
     while True:
         try:
             ingest_rss_once(connect_db, execute)
