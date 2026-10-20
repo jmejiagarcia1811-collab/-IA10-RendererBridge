@@ -100,7 +100,8 @@ def ingest_rss_once(connect_db, execute):
             if created + daily_count >= 5:
                 break
             try:
-                items = _feed_items(feed_url)
+                items = list(_feed_items(feed_url))
+                print("rss_ingest_feed parsed_items=%s" % len(items), flush=True)
                 for headline, summary, source_url in items:
                     if created + daily_count >= 5:
                         break
