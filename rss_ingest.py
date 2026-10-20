@@ -14,12 +14,12 @@ import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 
 DEFAULT_FEEDS = [
+    "https://www.europapress.es/rss/rss.aspx?ch=66",
+    "https://api.rtve.es/api/tematicas.rss",
+    "https://api.rtve.es/api/tematicas.xml",
     "https://www.rtve.es/rss/temas_noticias.xml",
     "https://www.rtve.es/rss/temas_deportes.xml",
-    "https://www.rtve.es/rss/temas_ciencia-tecnologia.xml",
     "https://www.rtve.es/rss/temas_cultura.xml",
-    "https://www.rtve.es/rss/temas_navarra.xml",
-    "https://www.rtve.es/rss/temas_tiempo.xml",
 ]
 
 def _clean(value):
@@ -39,9 +39,13 @@ def _feed_items(feed_url):
         raw = response.read(1_500_000)
     root = ET.fromstring(raw)
     now = datetime.now(timezone.utc)
-    for item in root.iter():
-        if not (item.tag.lower().endswith("item") or item.tag.lower().endswith("entry")):
-            continue
+    entries = [node for node in root.iter()
+               if node.tag.lower().endswith("item") or node.tag.lower().endswith("entry")]
+    if not entries:
+        # Log structure, not feed content, to diagnose valid XML wrappers or retired endpoints.
+        print("rss_ingest_feed_empty root_tag=%s child_tags=%s bytes=%s" %
+              (str(root.tag)[:80], ",".join(str(child.tag)[:40] for child in list(root)[:8]), len(raw)), flush=True)
+    for item in entries:
         title = _clean(_tag(item, "title"))
         summary = _clean(_tag(item, "description") or _tag(item, "summary") or _tag(item, "encoded") or _tag(item, "content"))
         link = _tag(item, "link")
