@@ -4,6 +4,7 @@ import json, mimetypes, os, shutil, sqlite3, subprocess, tempfile, threading, ti
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from local_renderer import render_local_content
+from rss_ingest import ingest_rss_once
 
 HOST = "0.0.0.0"
 PORT = int(os.environ.get("PORT", "10000"))
@@ -984,6 +985,32 @@ def local_renderer_smoke_test_once():
     finally:
         con.close()
 
+def has_queued_local_render_job():
+    """Read-only check allowing local jobs to run without a working Shotstack key."""
+    con = connect_db()
+    try:
+        rows = execute(con, "SELECT edit_json FROM jobs WHERE state='QUEUED' ORDER BY id LIMIT 25").fetchall()
+        for row in rows:
+            try:
+                payload = json.loads(row["edit_json"])
+                if isinstance(payload, dict) and isinstance(payload.get("local_render"), dict):
+                    return True
+            except Exception:
+                continue
+        return False
+    finally:
+        con.close()
+
+def rss_intake_worker():
+    """Periodically enqueue up to five sourced Spanish items per rolling day for review."""
+    interval = max(900, int(os.environ.get("IA10_RSS_INTERVAL_SECONDS", "900")))
+    while True:
+        try:
+            ingest_rss_once(connect_db, execute)
+        except Exception as exc:
+            print("rss_ingest_worker_error type=%s" % type(exc).__name__, flush=True)
+        time.sleep(interval)
+
 def background_queue_worker():
     """Poll the guarded queue while this free web service is awake."""
     interval = max(30, int(os.environ.get("IA10_WORKER_INTERVAL_SECONDS", "60")))
@@ -992,13 +1019,15 @@ def background_queue_worker():
         bool(os.environ.get("IA10_BRIDGE_TOKEN", ""))), flush=True)
     while True:
         time.sleep(interval)
-        # Never consume queued jobs until a provider key is configured.
-        if not os.environ.get("SHOTSTACK_API_KEY", "").strip():
+        # Shotstack is optional for jobs with an explicit local_render payload.
+        provider_key = os.environ.get("SHOTSTACK_API_KEY", "").strip()
+        if provider_key:
+            try:
+                poll_submitted_render()
+            except Exception as exc:
+                print("render_poll_worker_error type=%s" % type(exc).__name__, flush=True)
+        elif not has_queued_local_render_job():
             continue
-        try:
-            poll_submitted_render()
-        except Exception as exc:
-            print("render_poll_worker_error type=%s" % type(exc).__name__, flush=True)
         token = os.environ.get("IA10_BRIDGE_TOKEN", "")
         if not token:
             continue
@@ -1033,4 +1062,5 @@ if __name__ == "__main__":
     bootstrap_test_render_once()
     local_renderer_smoke_test_once()
     threading.Thread(target=background_queue_worker, name="ia10-queue-worker", daemon=True).start()
+    threading.Thread(target=rss_intake_worker, name="ia10-rss-intake", daemon=True).start()
     ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()
