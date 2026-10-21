@@ -446,7 +446,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(404, {"error":"not_found"})
             is_diagnostic = filename.startswith("ia10-test-") and filename[len("ia10-test-"):-4].isdigit()
             is_local_render = filename.startswith("local-") and filename[len("local-"):-4].isdigit()
-            is_ia30_content = filename == "ia30-consejos-verificacion.mp4"
+            is_ia30_content = filename in ("ia30-consejos-verificacion.mp4", "ia30-consejos-verificacion-v2.mp4")
             if not (is_diagnostic or is_local_render or is_ia30_content):
                 return self.send_json(404, {"error":"not_found"})
             media_path = MEDIA_DIR / filename
@@ -458,8 +458,8 @@ class Handler(BaseHTTPRequestHandler):
                 # job whose stored record still authorizes this exact media filename.
                 if is_ia30_content:
                     try:
-                        render_ia30_evergreen_video()
-                        data = media_path.read_bytes()
+                        generated_video = render_ia30_evergreen_video()
+                        data = generated_video.read_bytes()
                     except Exception as exc:
                         print("ia30_content_render_failed type=%s" % type(exc).__name__, flush=True)
                         return self.send_json(503, {"error":"ia30_content_render_failed"})
