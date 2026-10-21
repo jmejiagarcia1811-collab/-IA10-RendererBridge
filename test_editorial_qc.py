@@ -13,6 +13,30 @@ import app
 from app import EDITORIAL_QC_CHECKS, validate_editorial_qc
 
 
+
+
+class ShotstackKeySelectionTests(unittest.TestCase):
+    def test_stage_uses_stage_key_before_legacy_key(self):
+        with patch.dict(os.environ, {
+            "SHOTSTACK_STAGE_API_KEY": "stage-only",
+            "SHOTSTACK_API_KEY": "legacy",
+            "SHOTSTACK_PRODUCTION_API_KEY": "production-only",
+        }, clear=True):
+            self.assertEqual(app._shotstack_key_for_base("https://api.shotstack.io/edit/stage"), "stage-only")
+
+    def test_production_uses_production_key_before_legacy_key(self):
+        with patch.dict(os.environ, {
+            "SHOTSTACK_STAGE_API_KEY": "stage-only",
+            "SHOTSTACK_API_KEY": "legacy",
+            "SHOTSTACK_PRODUCTION_API_KEY": "production-only",
+        }, clear=True):
+            self.assertEqual(app._shotstack_key_for_base("https://api.shotstack.io/edit/v1"), "production-only")
+
+    def test_environment_specific_keys_fall_back_to_legacy_key(self):
+        with patch.dict(os.environ, {"SHOTSTACK_API_KEY": "legacy"}, clear=True):
+            self.assertEqual(app._shotstack_key_for_base("https://api.shotstack.io/edit/stage"), "legacy")
+            self.assertEqual(app._shotstack_key_for_base("https://api.shotstack.io/edit/v1"), "legacy")
+
 class EditorialQCTests(unittest.TestCase):
     def test_approval_requires_every_check_true(self):
         checklist = {key: True for key in EDITORIAL_QC_CHECKS}
