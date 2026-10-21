@@ -964,7 +964,8 @@ def technical_video_qc(url):
 
 def poll_submitted_render():
     """Poll one submitted Shotstack render and persist its terminal state."""
-    key = os.environ.get("SHOTSTACK_API_KEY", "").strip()
+    base = os.environ.get("SHOTSTACK_API_BASE", "https://api.shotstack.io/edit/stage").strip().rstrip("/")
+    key = _shotstack_key_for_base(base)
     if not key:
         return
     con = connect_db()
@@ -983,7 +984,6 @@ def poll_submitted_render():
         con.commit(); con.close()
         print("technical_qc id=%s state=%s result=%s" % (job["id"], new_state, detail[:120]), flush=True)
         return
-    base = os.environ.get("SHOTSTACK_API_BASE", "https://api.shotstack.io/edit/stage").rstrip("/")
     req = urllib.request.Request(base + "/render/" + str(job["provider_id"]),
         headers={"x-api-key": key}, method="GET")
     try:
