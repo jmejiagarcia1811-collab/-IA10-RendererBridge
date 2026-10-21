@@ -135,6 +135,81 @@ def render_local_test_video(filename):
             pass
     return video_path
 
+def render_ia30_evergreen_video():
+    """Create one fixed, original educational short; cache on Render's ephemeral disk."""
+    import asyncio
+    from PIL import Image, ImageDraw, ImageFont
+    import edge_tts
+    import imageio_ffmpeg
+
+    filename = "ia30-consejos-verificacion.mp4"
+    video_path = MEDIA_DIR / filename
+    if video_path.exists() and video_path.stat().st_size > 50000:
+        return video_path
+    MEDIA_DIR.mkdir(parents=True, exist_ok=True)
+    W, H = 1080, 1920
+    bg, panel, cyan = (11, 18, 32), (21, 34, 52), (103, 232, 249)
+    white, muted, yellow = (242, 247, 255), (181, 196, 215), (251, 191, 36)
+    bold_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+    regular_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+    def font(path, size):
+        try:
+            return ImageFont.truetype(path, size)
+        except Exception:
+            return ImageFont.load_default()
+    slides = [
+        ("ANTES DE COMPARTIR", ["una noticia…", "haz estas 3 comprobaciones."], "CONSEJO ÚTIL · 01/03"),
+        ("1. BUSCA LA FUENTE", ["Abre la publicación original.", "No te quedes solo con", "una captura o un titular."], "COMPRUEBA EL ORIGEN · 02/03"),
+        ("2. REVISA Y CONTRASTA", ["Comprueba la fecha y el contexto.", "Busca otra fuente fiable.", "¿No puedes verificarla?", "No la compartas."], "PIENSA ANTES DE DIFUNDIR · 03/03"),
+    ]
+    slide_paths = []
+    for idx, (heading, lines, footer) in enumerate(slides, 1):
+        im = Image.new("RGB", (W, H), bg)
+        d = ImageDraw.Draw(im)
+        d.rounded_rectangle((55, 80, 1025, 1840), radius=52, fill=panel, outline=(44, 67, 91), width=4)
+        d.rounded_rectangle((100, 140, 255, 156), radius=8, fill=cyan)
+        d.text((100, 220), "PLAN BASE IA 3.0", font=font(bold_path, 34), fill=cyan)
+        d.text((100, 420), heading, font=font(bold_path, 58), fill=white)
+        y = 610
+        for line in lines:
+            d.text((105, y), line, font=font(bold_path, 46), fill=yellow if "No la compartas" in line else white)
+            y += 92
+        d.line((100, 1545, 975, 1545), fill=(54, 84, 112), width=3)
+        d.text((100, 1600), footer, font=font(bold_path, 25), fill=muted)
+        d.text((100, 1690), "Fuente: Comisión Europea", font=font(regular_path, 25), fill=muted)
+        d.text((100, 1740), "ec.europa.eu/stories/6-tips/", font=font(regular_path, 23), fill=cyan)
+        im_path = MEDIA_DIR / ("ia30-verify-slide-%s.png" % idx)
+        im.save(im_path, format="PNG")
+        slide_paths.append(im_path)
+    audio_path = MEDIA_DIR / "ia30-verify-voice.mp3"
+    narration = ("Antes de compartir una noticia, comprueba la fuente original. "
+                 "Revisa la fecha y el contexto. Busca otra fuente fiable. "
+                 "Si no puedes verificarla, no la compartas. Piensa antes de difundir.")
+    async def make_voice():
+        communicate = edge_tts.Communicate(narration, voice="es-ES-ElviraNeural", rate="+18%")
+        await communicate.save(str(audio_path))
+    try:
+        asyncio.run(make_voice())
+        ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
+        cmd = [ffmpeg, "-y"]
+        for slide in slide_paths:
+            cmd += ["-loop", "1", "-t", "5.2", "-i", str(slide)]
+        cmd += ["-i", str(audio_path),
+                "-filter_complex", "[0:v]fps=30,format=yuv420p[v0];[1:v]fps=30,format=yuv420p[v1];[2:v]fps=30,format=yuv420p[v2];[v0][v1][v2]concat=n=3:v=1:a=0[v];[3:a]atempo=1.08,apad[a]",
+                "-map", "[v]", "-map", "[a]", "-t", "15.6", "-c:v", "libx264",
+                "-preset", "veryfast", "-crf", "25", "-c:a", "aac", "-b:a", "96k",
+                "-movflags", "+faststart", str(video_path)]
+        subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=120)
+        if not video_path.exists() or video_path.stat().st_size < 50000:
+            raise RuntimeError("educational_video_output_invalid")
+        return video_path
+    finally:
+        for path in slide_paths + [audio_path]:
+            try:
+                path.unlink()
+            except Exception:
+                pass
+
 def submit_render(edit):
     # Environment values may be pasted with surrounding whitespace/newlines.
     # Strip surrounding whitespace before constructing HTTP headers.
@@ -371,7 +446,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(404, {"error":"not_found"})
             is_diagnostic = filename.startswith("ia10-test-") and filename[len("ia10-test-"):-4].isdigit()
             is_local_render = filename.startswith("local-") and filename[len("local-"):-4].isdigit()
-            if not (is_diagnostic or is_local_render):
+            is_ia30_content = filename == "ia30-consejos-verificacion.mp4"
+            if not (is_diagnostic or is_local_render or is_ia30_content):
                 return self.send_json(404, {"error":"not_found"})
             media_path = MEDIA_DIR / filename
             try:
@@ -380,7 +456,14 @@ class Handler(BaseHTTPRequestHandler):
                 # Render's filesystem is ephemeral and instances do not share files.
                 # Recreate only allowlisted diagnostic artifacts or a known local-render
                 # job whose stored record still authorizes this exact media filename.
-                if is_diagnostic:
+                if is_ia30_content:
+                    try:
+                        render_ia30_evergreen_video()
+                        data = media_path.read_bytes()
+                    except Exception as exc:
+                        print("ia30_content_render_failed type=%s" % type(exc).__name__, flush=True)
+                        return self.send_json(503, {"error":"ia30_content_render_failed"})
+                elif is_diagnostic:
                     try:
                         render_local_test_video(filename)
                         data = media_path.read_bytes()
