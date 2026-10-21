@@ -38,17 +38,39 @@ def render_local_content(title, spec, filename, media_dir):
     draw = ImageDraw.Draw(canvas)
     draw.rounded_rectangle((64, 170, 1016, 1745), radius=44, fill=(20, 35, 52), outline=(50, 190, 180), width=5)
     draw.text((110, 235), "IA 3.0  •  ACTUALIDAD", font=font_small, fill=(65, 220, 205))
-    def draw_wrapped(text, font, x, y, max_chars, fill, line_gap=18):
-        lines = textwrap.wrap(text, width=max_chars) or [""]
+    def draw_wrapped(text, font, x, y, max_width, max_y, fill, line_gap=18):
+        # Wrap by actual rendered pixel width and stop before the reserved footer.
+        words = text.split()
+        lines, current = [], ""
+        for word in words:
+            candidate = (current + " " + word).strip()
+            if current and draw.textbbox((0, 0), candidate, font=font)[2] > max_width:
+                lines.append(current)
+                current = word
+            else:
+                current = candidate
+        if current:
+            lines.append(current)
+        line_height = max(1, font.getbbox("Ag")[3] - font.getbbox("Ag")[1]) + line_gap
+        max_lines = max(1, (max_y - y) // line_height)
+        truncated = len(lines) > max_lines
+        lines = lines[:max_lines]
+        if truncated and lines:
+            tail = lines[-1]
+            while tail and draw.textbbox((0, 0), tail + "…", font=font)[2] > max_width:
+                tail = tail[:-1]
+            lines[-1] = tail.rstrip() + "…"
         for line in lines:
             draw.text((x, y), line, font=font, fill=fill)
-            y += font.getbbox(line)[3] - font.getbbox(line)[1] + line_gap
+            y += line_height
         return y
-    y = draw_wrapped(headline, font_head, 110, 350, 22, (255,255,255), 24)
-    draw.line((110, min(y + 24, 1000), 900, min(y + 24, 1000)), fill=(65,220,205), width=5)
-    y = draw_wrapped(script, font_body, 110, min(y + 85, 1040), 34, (225,232,240), 18)
+    y = draw_wrapped(headline, font_head, 110, 350, 860, 760, (255,255,255), 24)
+    divider_y = min(y + 24, 900)
+    draw.line((110, divider_y, 900, divider_y), fill=(65,220,205), width=5)
+    body_y = min(divider_y + 65, 950)
+    y = draw_wrapped(script, font_body, 110, body_y, 860, 1380, (225,232,240), 18)
     if source:
-        draw_wrapped("Fuente: " + source, font_small, 110, min(max(y + 45, 1450), 1590), 48, (255,190,90), 10)
+        draw_wrapped("Fuente: " + source, font_small, 110, max(y + 24, 1430), 860, 1580, (255,190,90), 10)
     draw.text((110, 1660), "REVISIÓN EDITORIAL PENDIENTE", font=font_small, fill=(255,190,90))
     canvas.save(image, format="PNG")
     try:
