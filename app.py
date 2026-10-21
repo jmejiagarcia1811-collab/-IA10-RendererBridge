@@ -183,6 +183,14 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "no-store")
+        # Read-only browser dashboard may consume only the public health and queue-summary
+        # endpoints. No credentials, job titles, raw errors, or media URLs are exposed there.
+        origin = self.headers.get("Origin", "")
+        if origin == "https://ia30-centro-control.onrender.com":
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Vary", "Origin")
+            self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.end_headers()
         self.wfile.write(data)
 
