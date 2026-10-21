@@ -245,8 +245,20 @@ def check_shotstack_credentials():
             with urllib.request.urlopen(req, timeout=12) as response:
                 print("provider_auth_probe environment=%s status=%s result=%s" % (env_name, response.status, "ok" if response.status == 200 else "unexpected_status"), flush=True)
         except urllib.error.HTTPError as exc:
+            # Record only a sanitized provider error code/message, never keys or headers.
             hint = "unauthorized" if exc.code == 401 else "forbidden_key_or_account_permissions" if exc.code == 403 else "http_error"
-            print("provider_auth_probe environment=%s status=%s result=%s" % (env_name, exc.code, hint), flush=True)
+            provider_code = ""
+            try:
+                body = json.loads(exc.read(2048).decode("utf-8", "replace"))
+                candidates = [body.get("message"), body.get("error"), body.get("code"), body.get("status")]
+                response_obj = body.get("response")
+                if isinstance(response_obj, dict):
+                    candidates.extend([response_obj.get("message"), response_obj.get("error"), response_obj.get("code")])
+                provider_code = " ".join(str(v) for v in candidates if isinstance(v, (str, int)) and str(v).strip())
+                provider_code = "".join(ch for ch in provider_code if ch.isalnum() or ch in " ._:-")[:120].strip()
+            except Exception:
+                provider_code = ""
+            print("provider_auth_probe environment=%s status=%s result=%s provider_detail=%s" % (env_name, exc.code, hint, provider_code or "not_provided"), flush=True)
         except Exception as exc:
             print("provider_auth_probe environment=%s result=network_error type=%s" % (env_name, type(exc).__name__), flush=True)
 
