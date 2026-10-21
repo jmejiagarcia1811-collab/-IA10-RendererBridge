@@ -210,15 +210,26 @@ def render_ia30_evergreen_video():
             except Exception:
                 pass
 
+def _shotstack_key_for_base(base):
+    """Select the environment-specific key; keep legacy single-key compatibility."""
+    normalized = (base or "").strip().rstrip("/")
+    if normalized.endswith("/stage"):
+        return (os.environ.get("SHOTSTACK_STAGE_API_KEY", "").strip()
+                or os.environ.get("SHOTSTACK_API_KEY", "").strip())
+    if normalized.endswith("/v1"):
+        return (os.environ.get("SHOTSTACK_PRODUCTION_API_KEY", "").strip()
+                or os.environ.get("SHOTSTACK_API_KEY", "").strip())
+    return os.environ.get("SHOTSTACK_API_KEY", "").strip()
+
 def submit_render(edit):
-    # Environment values may be pasted with surrounding whitespace/newlines.
-    # Strip surrounding whitespace before constructing HTTP headers.
-    key = os.environ.get("SHOTSTACK_API_KEY", "").strip()
+    # Shotstack uses distinct Sandbox and Production API keys. Prefer the matching
+    # environment-specific key, while retaining compatibility with SHOTSTACK_API_KEY.
+    base = os.environ.get("SHOTSTACK_API_BASE", "https://api.shotstack.io/edit/stage").strip().rstrip("/")
+    key = _shotstack_key_for_base(base)
     if not key:
-        raise RuntimeError("renderer_not_configured")
+        raise RuntimeError("renderer_not_configured_for_environment")
     if any(ord(ch) < 32 or ord(ch) == 127 for ch in key):
         raise RuntimeError("renderer_key_contains_control_characters")
-    base = os.environ.get("SHOTSTACK_API_BASE", "https://api.shotstack.io/edit/stage").strip().rstrip("/")
     if any(ord(ch) < 32 or ord(ch) == 127 for ch in base):
         raise RuntimeError("renderer_base_url_contains_control_characters")
     req = urllib.request.Request(base + "/render",
@@ -228,11 +239,7 @@ def submit_render(edit):
         return json.loads(response.read().decode("utf-8"))
 
 def check_shotstack_credentials():
-    """Read-only credential check against both Shotstack environments; never logs keys or bodies."""
-    key = os.environ.get("SHOTSTACK_API_KEY", "").strip()
-    if not key:
-        print("provider_auth_check result=missing_key", flush=True)
-        return
+    """Read-only environment-specific auth check; never logs keys or response bodies."""
     configured = os.environ.get("SHOTSTACK_API_BASE", "https://api.shotstack.io/edit/stage").strip().rstrip("/")
     bases = []
     for candidate in (configured, "https://api.shotstack.io/edit/stage", "https://api.shotstack.io/edit/v1"):
@@ -240,25 +247,17 @@ def check_shotstack_credentials():
             bases.append(candidate)
     for base in bases:
         env_name = "stage" if base.endswith("/stage") else "production" if base.endswith("/v1") else "custom"
+        key = _shotstack_key_for_base(base)
+        if not key:
+            print("provider_auth_probe environment=%s result=not_configured" % env_name, flush=True)
+            continue
         try:
             req = urllib.request.Request(base + "/templates", headers={"Accept": "application/json", "x-api-key": key}, method="GET")
             with urllib.request.urlopen(req, timeout=12) as response:
                 print("provider_auth_probe environment=%s status=%s result=%s" % (env_name, response.status, "ok" if response.status == 200 else "unexpected_status"), flush=True)
         except urllib.error.HTTPError as exc:
-            # Record only a sanitized provider error code/message, never keys or headers.
             hint = "unauthorized" if exc.code == 401 else "forbidden_key_or_account_permissions" if exc.code == 403 else "http_error"
-            provider_code = ""
-            try:
-                body = json.loads(exc.read(2048).decode("utf-8", "replace"))
-                candidates = [body.get("message"), body.get("error"), body.get("code"), body.get("status")]
-                response_obj = body.get("response")
-                if isinstance(response_obj, dict):
-                    candidates.extend([response_obj.get("message"), response_obj.get("error"), response_obj.get("code")])
-                provider_code = " ".join(str(v) for v in candidates if isinstance(v, (str, int)) and str(v).strip())
-                provider_code = "".join(ch for ch in provider_code if ch.isalnum() or ch in " ._:-")[:120].strip()
-            except Exception:
-                provider_code = ""
-            print("provider_auth_probe environment=%s status=%s result=%s provider_detail=%s" % (env_name, exc.code, hint, provider_code or "not_provided"), flush=True)
+            print("provider_auth_probe environment=%s status=%s result=%s" % (env_name, exc.code, hint), flush=True)
         except Exception as exc:
             print("provider_auth_probe environment=%s result=network_error type=%s" % (env_name, type(exc).__name__), flush=True)
 
