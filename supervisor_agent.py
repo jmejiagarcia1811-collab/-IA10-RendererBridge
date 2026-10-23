@@ -1,11 +1,38 @@
-"""Second IA3 supervisor agent: coordinated diagnostics and safe next-step report.
+"""IA3 supervisor: read-only diagnostics and safe next-step report.
 
-This agent can autonomously inspect health and queue summaries. It deliberately does
-not publish, approve editorial items, delete production data, or execute arbitrary code.
+The supervisor validates the logical-agent catalog but does not activate its roles.
+It deliberately does not publish, approve editorial items, delete production data,
+read credentials from the catalog, or execute arbitrary code.
 """
 from agent_executor import execute_order
+from agent_registry import load_registry
+
 
 def run_supervisor(token):
+    # Fail closed if the static catalog is missing or violates its safety contract.
+    try:
+        catalog = load_registry()
+        catalog_status = {
+            "valid": True,
+            "mode": catalog["mode"],
+            "agent_count": len(catalog["agents"]),
+            "cell_count": catalog["cell_count"],
+        }
+    except Exception:
+        return 503, {
+            "ok": False,
+            "agent": "ia3-supervisor",
+            "state": "blocked",
+            "catalog": {"valid": False},
+            "steps": [],
+            "next_step": "Repair or restore the logical-agent catalog and rerun validation.",
+            "safety": {
+                "no_automatic_publication": True,
+                "no_bulk_editorial_approval": True,
+                "no_production_data_deletion": True,
+            },
+        }
+
     steps = []
     for action in ("health", "queue_summary"):
         status, result = execute_order(action, token)
@@ -15,8 +42,14 @@ def run_supervisor(token):
                 "ok": False,
                 "agent": "ia3-supervisor",
                 "state": "blocked",
+                "catalog": catalog_status,
                 "steps": steps,
-                "next_step": "Resolve the reported service or database connectivity issue, then rerun."
+                "next_step": "Resolve the reported service or database connectivity issue, then rerun.",
+                "safety": {
+                    "no_automatic_publication": True,
+                    "no_bulk_editorial_approval": True,
+                    "no_production_data_deletion": True,
+                },
             }
 
     health = steps[0]["result"].get("result", {})
@@ -38,6 +71,7 @@ def run_supervisor(token):
         "ok": True,
         "agent": "ia3-supervisor",
         "state": "diagnostics_complete",
+        "catalog": catalog_status,
         "queue_counts": counts,
         "queue_summary": summary,
         "steps_completed": ["health", "queue_summary"],
@@ -45,6 +79,6 @@ def run_supervisor(token):
         "safety": {
             "no_automatic_publication": True,
             "no_bulk_editorial_approval": True,
-            "no_production_data_deletion": True
-        }
+            "no_production_data_deletion": True,
+        },
     }

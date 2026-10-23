@@ -1,0 +1,2484 @@
+{
+  "project": "Plan Base IA 3.0",
+  "schema_version": 1,
+  "mode": "catalog_only",
+  "agent_count": 99,
+  "cell_count": 3,
+  "agents": [
+    {
+      "id": "RA-01",
+      "name": "detector_tendencias",
+      "cell": "radar_verificacion",
+      "purpose": "detector tendencias",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "RA-02",
+      "name": "lector_rss",
+      "cell": "radar_verificacion",
+      "purpose": "lector rss",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "RA-03",
+      "name": "detector_duplicados",
+      "cell": "radar_verificacion",
+      "purpose": "detector duplicados",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "RA-04",
+      "name": "clasificador_tematico",
+      "cell": "radar_verificacion",
+      "purpose": "clasificador tematico",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "RA-05",
+      "name": "detector_urgencias",
+      "cell": "radar_verificacion",
+      "purpose": "detector urgencias",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "RA-06",
+      "name": "analista_deporte",
+      "cell": "radar_verificacion",
+      "purpose": "analista deporte",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "RA-07",
+      "name": "analista_motor_rutas",
+      "cell": "radar_verificacion",
+      "purpose": "analista motor rutas",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "RA-08",
+      "name": "analista_formula1",
+      "cell": "radar_verificacion",
+      "purpose": "analista formula1",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "RA-09",
+      "name": "analista_tecnologia",
+      "cell": "radar_verificacion",
+      "purpose": "analista tecnologia",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "RA-10",
+      "name": "analista_ia",
+      "cell": "radar_verificacion",
+      "purpose": "analista ia",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "RA-11",
+      "name": "analista_entretenimiento",
+      "cell": "radar_verificacion",
+      "purpose": "analista entretenimiento",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "RA-12",
+      "name": "analista_musica",
+      "cell": "radar_verificacion",
+      "purpose": "analista musica",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "RA-13",
+      "name": "analista_meteorologia_local",
+      "cell": "radar_verificacion",
+      "purpose": "analista meteorologia local",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "RA-14",
+      "name": "normalizador_titulares",
+      "cell": "radar_verificacion",
+      "purpose": "normalizador titulares",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "RA-15",
+      "name": "extractor_afirmaciones",
+      "cell": "radar_verificacion",
+      "purpose": "extractor afirmaciones",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "RA-16",
+      "name": "buscador_fuente_primaria",
+      "cell": "radar_verificacion",
+      "purpose": "buscador fuente primaria",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "RA-17",
+      "name": "verificador_fecha",
+      "cell": "radar_verificacion",
+      "purpose": "verificador fecha",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "RA-18",
+      "name": "verificador_entidades",
+      "cell": "radar_verificacion",
+      "purpose": "verificador entidades",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "RA-19",
+      "name": "verificador_cifras",
+      "cell": "radar_verificacion",
+      "purpose": "verificador cifras",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "RA-20",
+      "name": "verificador_citas",
+      "cell": "radar_verificacion",
+      "purpose": "verificador citas",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "RA-21",
+      "name": "comparador_fuentes",
+      "cell": "radar_verificacion",
+      "purpose": "comparador fuentes",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "RA-22",
+      "name": "detector_contradicciones",
+      "cell": "radar_verificacion",
+      "purpose": "detector contradicciones",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "RA-23",
+      "name": "detector_rumores",
+      "cell": "radar_verificacion",
+      "purpose": "detector rumores",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "RA-24",
+      "name": "clasificador_hecho_contexto_opinion",
+      "cell": "radar_verificacion",
+      "purpose": "clasificador hecho contexto opinion",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "RA-25",
+      "name": "evaluador_fiabilidad_fuente",
+      "cell": "radar_verificacion",
+      "purpose": "evaluador fiabilidad fuente",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "RA-26",
+      "name": "evaluador_audiencia_espanola",
+      "cell": "radar_verificacion",
+      "purpose": "evaluador audiencia espanola",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "RA-27",
+      "name": "detector_sensibilidad",
+      "cell": "radar_verificacion",
+      "purpose": "detector sensibilidad",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "RA-28",
+      "name": "detector_datos_personales",
+      "cell": "radar_verificacion",
+      "purpose": "detector datos personales",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "RA-29",
+      "name": "evaluador_derechos_atribucion",
+      "cell": "radar_verificacion",
+      "purpose": "evaluador derechos atribucion",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "RA-30",
+      "name": "generador_ficha_evidencia",
+      "cell": "radar_verificacion",
+      "purpose": "generador ficha evidencia",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "RA-31",
+      "name": "priorizador_historias",
+      "cell": "radar_verificacion",
+      "purpose": "priorizador historias",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "RA-32",
+      "name": "gestor_caducidad_noticia",
+      "cell": "radar_verificacion",
+      "purpose": "gestor caducidad noticia",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "RA-33",
+      "name": "revisor_evidencia_final",
+      "cell": "radar_verificacion",
+      "purpose": "revisor evidencia final",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "GU-01",
+      "name": "generador_enfoque_editorial",
+      "cell": "guion_produccion_qc",
+      "purpose": "generador enfoque editorial",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "GU-02",
+      "name": "generador_gancho",
+      "cell": "guion_produccion_qc",
+      "purpose": "generador gancho",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "GU-03",
+      "name": "redactor_guion_breve",
+      "cell": "guion_produccion_qc",
+      "purpose": "redactor guion breve",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "GU-04",
+      "name": "editor_claridad",
+      "cell": "guion_produccion_qc",
+      "purpose": "editor claridad",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "GU-05",
+      "name": "corrector_ortografico",
+      "cell": "guion_produccion_qc",
+      "purpose": "corrector ortografico",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "GU-06",
+      "name": "corrector_gramatical",
+      "cell": "guion_produccion_qc",
+      "purpose": "corrector gramatical",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "GU-07",
+      "name": "verificador_nombres",
+      "cell": "guion_produccion_qc",
+      "purpose": "verificador nombres",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "GU-08",
+      "name": "verificador_fechas",
+      "cell": "guion_produccion_qc",
+      "purpose": "verificador fechas",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "GU-09",
+      "name": "verificador_numeros",
+      "cell": "guion_produccion_qc",
+      "purpose": "verificador numeros",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "GU-10",
+      "name": "adaptador_espanol_natural",
+      "cell": "guion_produccion_qc",
+      "purpose": "adaptador espanol natural",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "GU-11",
+      "name": "adaptador_duracion",
+      "cell": "guion_produccion_qc",
+      "purpose": "adaptador duracion",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "GU-12",
+      "name": "planificador_escenas",
+      "cell": "guion_produccion_qc",
+      "purpose": "planificador escenas",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "GU-13",
+      "name": "generador_texto_pantalla",
+      "cell": "guion_produccion_qc",
+      "purpose": "generador texto pantalla",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "GU-14",
+      "name": "verificador_zona_segura",
+      "cell": "guion_produccion_qc",
+      "purpose": "verificador zona segura",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "GU-15",
+      "name": "planificador_subtitulos",
+      "cell": "guion_produccion_qc",
+      "purpose": "planificador subtitulos",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "GU-16",
+      "name": "revisor_legibilidad",
+      "cell": "guion_produccion_qc",
+      "purpose": "revisor legibilidad",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "GU-17",
+      "name": "revisor_contraste",
+      "cell": "guion_produccion_qc",
+      "purpose": "revisor contraste",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "GU-18",
+      "name": "revisor_ritmo",
+      "cell": "guion_produccion_qc",
+      "purpose": "revisor ritmo",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "GU-19",
+      "name": "revisor_cta",
+      "cell": "guion_produccion_qc",
+      "purpose": "revisor cta",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "GU-20",
+      "name": "planificador_voz",
+      "cell": "guion_produccion_qc",
+      "purpose": "planificador voz",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "GU-21",
+      "name": "revisor_pronunciacion",
+      "cell": "guion_produccion_qc",
+      "purpose": "revisor pronunciacion",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "GU-22",
+      "name": "revisor_sincronia_av",
+      "cell": "guion_produccion_qc",
+      "purpose": "revisor sincronia av",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "GU-23",
+      "name": "validador_formato_vertical",
+      "cell": "guion_produccion_qc",
+      "purpose": "validador formato vertical",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "GU-24",
+      "name": "validador_resolucion",
+      "cell": "guion_produccion_qc",
+      "purpose": "validador resolucion",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "GU-25",
+      "name": "validador_duracion",
+      "cell": "guion_produccion_qc",
+      "purpose": "validador duracion",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "GU-26",
+      "name": "validador_audio",
+      "cell": "guion_produccion_qc",
+      "purpose": "validador audio",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "GU-27",
+      "name": "validador_decodificacion",
+      "cell": "guion_produccion_qc",
+      "purpose": "validador decodificacion",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "GU-28",
+      "name": "detector_pantalla_negra_o_imagen_fija",
+      "cell": "guion_produccion_qc",
+      "purpose": "detector pantalla negra o imagen fija",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "GU-29",
+      "name": "detector_marcas_agua_artefactos",
+      "cell": "guion_produccion_qc",
+      "purpose": "detector marcas agua artefactos",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "GU-30",
+      "name": "verificador_fuente_fecha_enlace",
+      "cell": "guion_produccion_qc",
+      "purpose": "verificador fuente fecha enlace",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "GU-31",
+      "name": "revisor_guion_video",
+      "cell": "guion_produccion_qc",
+      "purpose": "revisor guion video",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "GU-32",
+      "name": "evaluador_editorial_final",
+      "cell": "guion_produccion_qc",
+      "purpose": "evaluador editorial final",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "GU-33",
+      "name": "emisor_informe_qc",
+      "cell": "guion_produccion_qc",
+      "purpose": "emisor informe qc",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "OP-01",
+      "name": "supervisor_cola",
+      "cell": "operaciones_negocio_mejora",
+      "purpose": "supervisor cola",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "OP-02",
+      "name": "analista_estados_trabajos",
+      "cell": "operaciones_negocio_mejora",
+      "purpose": "analista estados trabajos",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "OP-03",
+      "name": "detector_cola_vacia",
+      "cell": "operaciones_negocio_mejora",
+      "purpose": "detector cola vacia",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "OP-04",
+      "name": "clasificador_errores",
+      "cell": "operaciones_negocio_mejora",
+      "purpose": "clasificador errores",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "OP-05",
+      "name": "analista_fallos_proveedor",
+      "cell": "operaciones_negocio_mejora",
+      "purpose": "analista fallos proveedor",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "OP-06",
+      "name": "comprobador_config_no_secreta",
+      "cell": "operaciones_negocio_mejora",
+      "purpose": "comprobador config no secreta",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "OP-07",
+      "name": "analista_salud_servicio",
+      "cell": "operaciones_negocio_mejora",
+      "purpose": "analista salud servicio",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "OP-08",
+      "name": "analista_latencia",
+      "cell": "operaciones_negocio_mejora",
+      "purpose": "analista latencia",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "OP-09",
+      "name": "analista_recursos",
+      "cell": "operaciones_negocio_mejora",
+      "purpose": "analista recursos",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "OP-10",
+      "name": "gestor_limites_plan_gratuito",
+      "cell": "operaciones_negocio_mejora",
+      "purpose": "gestor limites plan gratuito",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "OP-11",
+      "name": "detector_reintentos",
+      "cell": "operaciones_negocio_mejora",
+      "purpose": "detector reintentos",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "OP-12",
+      "name": "priorizador_trabajos_recuperables",
+      "cell": "operaciones_negocio_mejora",
+      "purpose": "priorizador trabajos recuperables",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "OP-13",
+      "name": "gestor_trabajos_bloqueados",
+      "cell": "operaciones_negocio_mejora",
+      "purpose": "gestor trabajos bloqueados",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "OP-14",
+      "name": "generador_informe_operativo",
+      "cell": "operaciones_negocio_mejora",
+      "purpose": "generador informe operativo",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "OP-15",
+      "name": "auditor_trazabilidad",
+      "cell": "operaciones_negocio_mejora",
+      "purpose": "auditor trazabilidad",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "OP-16",
+      "name": "auditor_cambios",
+      "cell": "operaciones_negocio_mejora",
+      "purpose": "auditor cambios",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "OP-17",
+      "name": "validador_contratos_api",
+      "cell": "operaciones_negocio_mejora",
+      "purpose": "validador contratos api",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "OP-18",
+      "name": "validador_respuestas_http",
+      "cell": "operaciones_negocio_mejora",
+      "purpose": "validador respuestas http",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "OP-19",
+      "name": "analista_metricas_publicacion_lectura",
+      "cell": "operaciones_negocio_mejora",
+      "purpose": "analista metricas publicacion lectura",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "OP-20",
+      "name": "analista_metricas_audiencia_lectura",
+      "cell": "operaciones_negocio_mejora",
+      "purpose": "analista metricas audiencia lectura",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "OP-21",
+      "name": "analista_rendimiento_tema",
+      "cell": "operaciones_negocio_mejora",
+      "purpose": "analista rendimiento tema",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "OP-22",
+      "name": "analista_afiliacion",
+      "cell": "operaciones_negocio_mejora",
+      "purpose": "analista afiliacion",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "OP-23",
+      "name": "analista_oportunidades_inmobiliarias",
+      "cell": "operaciones_negocio_mejora",
+      "purpose": "analista oportunidades inmobiliarias",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "OP-24",
+      "name": "analista_oportunidades_vehiculos",
+      "cell": "operaciones_negocio_mejora",
+      "purpose": "analista oportunidades vehiculos",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "OP-25",
+      "name": "analista_oportunidades_gemas_metales",
+      "cell": "operaciones_negocio_mejora",
+      "purpose": "analista oportunidades gemas metales",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "OP-26",
+      "name": "analista_contenido_motor_rutas",
+      "cell": "operaciones_negocio_mejora",
+      "purpose": "analista contenido motor rutas",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "OP-27",
+      "name": "calculador_costes_roi",
+      "cell": "operaciones_negocio_mejora",
+      "purpose": "calculador costes roi",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "OP-28",
+      "name": "detector_gasto_no_autorizado",
+      "cell": "operaciones_negocio_mejora",
+      "purpose": "detector gasto no autorizado",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "OP-29",
+      "name": "gestor_presupuesto_cero",
+      "cell": "operaciones_negocio_mejora",
+      "purpose": "gestor presupuesto cero",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "OP-30",
+      "name": "generador_experimentos_editoriales",
+      "cell": "operaciones_negocio_mejora",
+      "purpose": "generador experimentos editoriales",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "OP-31",
+      "name": "comparador_experimentos",
+      "cell": "operaciones_negocio_mejora",
+      "purpose": "comparador experimentos",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "OP-32",
+      "name": "recomendador_siguiente_paso",
+      "cell": "operaciones_negocio_mejora",
+      "purpose": "recomendador siguiente paso",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    },
+    {
+      "id": "OP-33",
+      "name": "auditor_coordinador_salida",
+      "cell": "operaciones_negocio_mejora",
+      "purpose": "auditor coordinador salida",
+      "mode": "planned",
+      "permissions": [
+        "read_approved_inputs",
+        "emit_structured_result"
+      ],
+      "prohibited": [
+        "publish",
+        "approve_qc",
+        "bypass_qc",
+        "read_secrets",
+        "delete_jobs",
+        "arbitrary_shell"
+      ],
+      "output_states": [
+        "ok",
+        "needs_review",
+        "blocked",
+        "error"
+      ]
+    }
+  ]
+}
