@@ -5,6 +5,8 @@ on:
     paths:
       - "config/agents_registry.json"
       - "agent_registry.py"
+      - "supervisor_agent.py"
+      - "tests/test_supervisor_agent_catalog.py"
       - "tests/test_agents_registry.py"
       - ".github/workflows/agent-registry-tests.yml"
   push:
