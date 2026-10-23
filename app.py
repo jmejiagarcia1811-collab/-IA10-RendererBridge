@@ -613,7 +613,78 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/agent/execute":
             action = body.get("action")
+            order_id = body.get("order_id")
+            if not isinstance(action, str) or action not in ("health", "queue_summary", "process_next"):
+                return self.send_json(400, {"error":"action_not_allowed",
+                    "allowed_actions":["health","queue_summary","process_next"]})
+            con = None
+            try:
+                con = connect_db()
+                if isinstance(con, sqlite3.Connection):
+                    execute(con, """CREATE TABLE IF NOT EXISTS agent_orders (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT, action TEXT NOT NULL,
+                        state TEXT NOT NULL, created_at INTEGER NOT NULL,
+                        updated_at INTEGER NOT NULL, last_error TEXT)""")
+                else:
+                    execute(con, """CREATE TABLE IF NOT EXISTS agent_orders (
+                        id BIGSERIAL PRIMARY KEY, action TEXT NOT NULL,
+                        state TEXT NOT NULL, created_at BIGINT NOT NULL,
+                        updated_at BIGINT NOT NULL, last_error TEXT)""")
+                now = int(time.time())
+                if order_id is None:
+                    row = execute(con, """INSERT INTO agent_orders(action,state,created_at,updated_at,last_error)
+                        VALUES(%s,'PENDING',%s,%s,'') RETURNING id""", (action,now,now)).fetchone()
+                    order_id = int(row["id"])
+                else:
+                    if not str(order_id).isdigit():
+                        con.close()
+                        return self.send_json(400, {"error":"invalid_order_id"})
+                    row = execute(con, "SELECT id,action,state FROM agent_orders WHERE id=%s", (int(order_id),)).fetchone()
+                    if not row:
+                        con.close()
+                        return self.send_json(404, {"error":"order_not_found"})
+                    if str(row["action"]) != action:
+                        con.close()
+                        return self.send_json(409, {"error":"order_action_mismatch"})
+                    if str(row["state"]) == "RUNNING":
+                        con.close()
+                        return self.send_json(409, {"error":"order_already_running"})
+                    execute(con, "UPDATE agent_orders SET state='RUNNING',updated_at=%s WHERE id=%s",
+                            (now,int(order_id)))
+                con.commit()
+                con.close()
+                con = None
+            except Exception as exc:
+                if con is not None:
+                    try: con.close()
+                    except Exception: pass
+                print("agent_order_store_failed type=%s" % type(exc).__name__, flush=True)
+                return self.send_json(503, {"error":"agent_order_store_unavailable"})
             status, result = execute_order(action, os.environ.get("IA10_BRIDGE_TOKEN", ""))
+            con = None
+            try:
+                con = connect_db()
+                now = int(time.time())
+                if result.get("ok") is True:
+                    execute(con, "DELETE FROM agent_orders WHERE id=%s", (int(order_id),))
+                    con.commit()
+                    result["order_id"] = int(order_id)
+                    result["order_deleted_after_success"] = True
+                else:
+                    safe_error = str(result.get("error", "execution_not_confirmed"))[:180]
+                    execute(con, """UPDATE agent_orders SET state='RETRY_PENDING',last_error=%s,updated_at=%s
+                        WHERE id=%s""", (safe_error,now,int(order_id)))
+                    con.commit()
+                    result["order_id"] = int(order_id)
+                    result["order_retained_for_retry"] = True
+                con.close()
+            except Exception as exc:
+                if con is not None:
+                    try: con.close()
+                    except Exception: pass
+                print("agent_order_finalize_failed type=%s" % type(exc).__name__, flush=True)
+                result["order_id"] = int(order_id)
+                result["order_status_update"] = "unknown"
             return self.send_json(status, result)
 
         if path in ("/jobs", "/render"):
