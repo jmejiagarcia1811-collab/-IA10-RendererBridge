@@ -3,6 +3,7 @@ name: Editorial QC tests
 on:
   push:
     branches:
+      - main
       - "feature/guarded-editorial-qc"
   pull_request:
     branches:
