@@ -228,11 +228,10 @@ def _shotstack_key_source_for_base(base):
             return "SHOTSTACK_API_KEY"
         return "missing"
     if normalized.endswith("/v1"):
-        if os.environ.get("SHOTSTACK_PRODUCTION_API_KEY", "").strip():
-            return "SHOTSTACK_PRODUCTION_API_KEY"
-        if os.environ.get("SHOTSTACK_API_KEY", "").strip():
-            return "SHOTSTACK_API_KEY"
-        return "missing"
+        # Never send a stage/legacy key to the production endpoint.
+        return ("SHOTSTACK_PRODUCTION_API_KEY"
+                if os.environ.get("SHOTSTACK_PRODUCTION_API_KEY", "").strip()
+                else "missing")
     return "SHOTSTACK_API_KEY" if os.environ.get("SHOTSTACK_API_KEY", "").strip() else "missing"
 
 
