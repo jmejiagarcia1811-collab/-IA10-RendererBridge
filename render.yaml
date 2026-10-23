@@ -10,6 +10,10 @@ services:
     healthCheckPath: /health
     autoDeploy: false
     envVars:
+      - key: SHOTSTACK_STAGE_API_KEY
+        sync: false
+      - key: SHOTSTACK_PRODUCTION_API_KEY
+        sync: false
       - key: SHOTSTACK_API_KEY
         sync: false
       - key: IA10_BRIDGE_TOKEN

@@ -210,21 +210,61 @@ def render_ia30_evergreen_video():
             except Exception:
                 pass
 
+def _shotstack_normalize_base(base):
+    """Accept either an environment base URL or its full /render endpoint."""
+    normalized = (base or "").strip().rstrip("/")
+    if normalized.endswith("/render"):
+        normalized = normalized[:-len("/render")]
+    return normalized
+
+
+def _shotstack_key_source_for_base(base):
+    """Return only the variable name selected; never return or log a secret."""
+    normalized = _shotstack_normalize_base(base)
+    if normalized.endswith("/stage"):
+        if os.environ.get("SHOTSTACK_STAGE_API_KEY", "").strip():
+            return "SHOTSTACK_STAGE_API_KEY"
+        if os.environ.get("SHOTSTACK_API_KEY", "").strip():
+            return "SHOTSTACK_API_KEY"
+        return "missing"
+    if normalized.endswith("/v1"):
+        if os.environ.get("SHOTSTACK_PRODUCTION_API_KEY", "").strip():
+            return "SHOTSTACK_PRODUCTION_API_KEY"
+        if os.environ.get("SHOTSTACK_API_KEY", "").strip():
+            return "SHOTSTACK_API_KEY"
+        return "missing"
+    return "SHOTSTACK_API_KEY" if os.environ.get("SHOTSTACK_API_KEY", "").strip() else "missing"
+
+
 def _shotstack_key_for_base(base):
     """Select the environment-specific key; keep legacy single-key compatibility."""
-    normalized = (base or "").strip().rstrip("/")
-    if normalized.endswith("/stage"):
-        return (os.environ.get("SHOTSTACK_STAGE_API_KEY", "").strip()
-                or os.environ.get("SHOTSTACK_API_KEY", "").strip())
-    if normalized.endswith("/v1"):
-        return (os.environ.get("SHOTSTACK_PRODUCTION_API_KEY", "").strip()
-                or os.environ.get("SHOTSTACK_API_KEY", "").strip())
-    return os.environ.get("SHOTSTACK_API_KEY", "").strip()
+    source = _shotstack_key_source_for_base(base)
+    return os.environ.get(source, "").strip() if source != "missing" else ""
+
+
+def _shotstack_safe_error_detail(exc):
+    """Extract short provider error fields without logging credentials or URLs."""
+    try:
+        payload = json.loads(exc.read(4096).decode("utf-8", "replace"))
+        if not isinstance(payload, dict):
+            return "provider_error_body_not_json"
+        import re
+        candidates = []
+        for field in ("code", "error", "message", "detail"):
+            value = payload.get(field)
+            if isinstance(value, str):
+                value = " ".join(value.split())
+                value = re.sub(r"https?://\S+", "[URL_REDACTED]", value)
+                value = re.sub(r"(?i)(api[_ -]?key|token|authorization)\s*[:=]\s*[^ ,;]+", r"\1=[REDACTED]", value)
+                candidates.append(field + "=" + value[:120])
+        return ";".join(candidates)[:240] if candidates else "provider_error_body_has_no_safe_fields"
+    except Exception:
+        return "provider_error_body_unreadable"
 
 def submit_render(edit):
     # Shotstack uses distinct Sandbox and Production API keys. Prefer the matching
     # environment-specific key, while retaining compatibility with SHOTSTACK_API_KEY.
-    base = os.environ.get("SHOTSTACK_API_BASE", "https://api.shotstack.io/edit/stage").strip().rstrip("/")
+    base = _shotstack_normalize_base(os.environ.get("SHOTSTACK_API_BASE", "https://api.shotstack.io/edit/stage"))
     key = _shotstack_key_for_base(base)
     if not key:
         raise RuntimeError("renderer_not_configured_for_environment")
@@ -240,26 +280,29 @@ def submit_render(edit):
 
 def check_shotstack_credentials():
     """Read-only environment-specific auth check; never logs keys or response bodies."""
-    configured = os.environ.get("SHOTSTACK_API_BASE", "https://api.shotstack.io/edit/stage").strip().rstrip("/")
+    configured = _shotstack_normalize_base(os.environ.get("SHOTSTACK_API_BASE", "https://api.shotstack.io/edit/stage"))
     bases = []
     for candidate in (configured, "https://api.shotstack.io/edit/stage", "https://api.shotstack.io/edit/v1"):
         if candidate and candidate not in bases:
             bases.append(candidate)
     for base in bases:
         env_name = "stage" if base.endswith("/stage") else "production" if base.endswith("/v1") else "custom"
+        source = _shotstack_key_source_for_base(base)
         key = _shotstack_key_for_base(base)
         if not key:
-            print("provider_auth_probe environment=%s result=not_configured" % env_name, flush=True)
+            print("provider_auth_probe environment=%s key_source=missing result=not_configured" % env_name, flush=True)
             continue
+        key_mode = "environment_specific" if source in ("SHOTSTACK_STAGE_API_KEY", "SHOTSTACK_PRODUCTION_API_KEY") else "generic_fallback"
         try:
             req = urllib.request.Request(base + "/templates", headers={"Accept": "application/json", "x-api-key": key}, method="GET")
             with urllib.request.urlopen(req, timeout=12) as response:
-                print("provider_auth_probe environment=%s status=%s result=%s" % (env_name, response.status, "ok" if response.status == 200 else "unexpected_status"), flush=True)
+                print("provider_auth_probe environment=%s key_source=%s key_mode=%s status=%s result=%s" % (env_name, source, key_mode, response.status, "ok" if response.status == 200 else "unexpected_status"), flush=True)
         except urllib.error.HTTPError as exc:
             hint = "unauthorized" if exc.code == 401 else "forbidden_key_or_account_permissions" if exc.code == 403 else "http_error"
-            print("provider_auth_probe environment=%s status=%s result=%s" % (env_name, exc.code, hint), flush=True)
+            detail = _shotstack_safe_error_detail(exc) if exc.code in (401, 403) else "not_read"
+            print("provider_auth_probe environment=%s key_source=%s key_mode=%s status=%s result=%s detail=%s" % (env_name, source, key_mode, exc.code, hint, detail), flush=True)
         except Exception as exc:
-            print("provider_auth_probe environment=%s result=network_error type=%s" % (env_name, type(exc).__name__), flush=True)
+            print("provider_auth_probe environment=%s key_source=%s result=network_error type=%s" % (env_name, source, type(exc).__name__), flush=True)
 
 
 class Handler(BaseHTTPRequestHandler):
