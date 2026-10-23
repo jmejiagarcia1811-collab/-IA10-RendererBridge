@@ -246,8 +246,8 @@ def _shotstack_safe_error_detail(exc):
             value = payload.get(field)
             if isinstance(value, str):
                 value = " ".join(value.split())
-                value = re.sub(r"https?://\\S+", "[URL_REDACTED]", value)
-                value = re.sub(r"(?i)(api[_ -]?key|token|authorization)\\s*[:=]\\s*[^ ,;]+", r"\\1=[REDACTED]", value)
+                value = re.sub(r"https?://\S+", "[URL_REDACTED]", value)
+                value = re.sub(r"(?i)(api[_ -]?key|token|authorization)\s*[:=]\s*[^ ,;]+", r"\1=[REDACTED]", value)
                 candidates.append(field + "=" + value[:120])
         return ";".join(candidates)[:240] if candidates else "provider_error_body_has_no_safe_fields"
     except Exception:
