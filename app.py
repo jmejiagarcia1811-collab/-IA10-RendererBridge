@@ -1186,7 +1186,7 @@ def recover_stale_processing_jobs():
     now = int(time.time())
     # Local renders take seconds; provider requests have bounded timeouts.
     # A 15-minute grace period avoids touching work that may still be active.
-    cutoff = now - max(900, int(os.environ.get("IA10_STALE_PROCESSING_SECONDS", "900")))
+    cutoff = now - max(180, int(os.environ.get("IA10_STALE_PROCESSING_SECONDS", "180")))
     con = connect_db()
     try:
         cur = execute(
