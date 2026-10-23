@@ -6,6 +6,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from local_renderer import render_local_content
 from rss_ingest import ingest_rss_once
 from agent_executor import execute_order
+from supervisor_agent import run_supervisor
 
 HOST = "0.0.0.0"
 PORT = int(os.environ.get("PORT", "10000"))
@@ -610,6 +611,10 @@ class Handler(BaseHTTPRequestHandler):
             body = parse_body(self)
         except Exception:
             return self.send_json(400, {"error":"invalid_json_or_body_size"})
+
+        if path == "/agent/supervisor":
+            status, result = run_supervisor(os.environ.get("IA10_BRIDGE_TOKEN", ""))
+            return self.send_json(status, result)
 
         if path == "/agent/execute":
             action = body.get("action")
