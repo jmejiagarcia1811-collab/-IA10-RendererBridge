@@ -212,7 +212,7 @@ def render_ia30_evergreen_video():
 
 def _shotstack_key_source_for_base(base):
     """Return only the variable name selected; never return or log a secret."""
-    normalized = (base or "").strip().rstrip("/")
+    normalized = _shotstack_normalize_base(base)
     if normalized.endswith("/stage"):
         if os.environ.get("SHOTSTACK_STAGE_API_KEY", "").strip():
             return "SHOTSTACK_STAGE_API_KEY"
@@ -256,7 +256,7 @@ def _shotstack_safe_error_detail(exc):
 def submit_render(edit):
     # Shotstack uses distinct Sandbox and Production API keys. Prefer the matching
     # environment-specific key, while retaining compatibility with SHOTSTACK_API_KEY.
-    base = os.environ.get("SHOTSTACK_API_BASE", "https://api.shotstack.io/edit/stage").strip().rstrip("/")
+    base = _shotstack_normalize_base(os.environ.get("SHOTSTACK_API_BASE", "https://api.shotstack.io/edit/stage"))
     key = _shotstack_key_for_base(base)
     if not key:
         raise RuntimeError("renderer_not_configured_for_environment")
@@ -272,7 +272,7 @@ def submit_render(edit):
 
 def check_shotstack_credentials():
     """Read-only environment-specific auth check; never logs keys or response bodies."""
-    configured = os.environ.get("SHOTSTACK_API_BASE", "https://api.shotstack.io/edit/stage").strip().rstrip("/")
+    configured = _shotstack_normalize_base(os.environ.get("SHOTSTACK_API_BASE", "https://api.shotstack.io/edit/stage"))
     bases = []
     for candidate in (configured, "https://api.shotstack.io/edit/stage", "https://api.shotstack.io/edit/v1"):
         if candidate and candidate not in bases:
