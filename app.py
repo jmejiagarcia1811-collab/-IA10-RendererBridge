@@ -219,19 +219,18 @@ def _shotstack_normalize_base(base):
 
 
 def _shotstack_key_source_for_base(base):
-    """Return only the variable name selected; never return or log a secret."""
+    """Fail closed: only environment-specific credentials may authorize a provider."""
     normalized = _shotstack_normalize_base(base)
     if normalized.endswith("/stage"):
-        if os.environ.get("SHOTSTACK_STAGE_API_KEY", "").strip():
-            return "SHOTSTACK_STAGE_API_KEY"
-        if os.environ.get("SHOTSTACK_API_KEY", "").strip():
-            return "SHOTSTACK_API_KEY"
-        return "missing"
+        return ("SHOTSTACK_STAGE_API_KEY"
+                if os.environ.get("SHOTSTACK_STAGE_API_KEY", "").strip()
+                else "missing")
     if normalized.endswith("/v1"):
-        # Never send a stage/legacy key to the production endpoint.
+        # Never send a stage or generic legacy key to production.
         return ("SHOTSTACK_PRODUCTION_API_KEY"
                 if os.environ.get("SHOTSTACK_PRODUCTION_API_KEY", "").strip()
                 else "missing")
+    # Custom endpoints must use the explicitly generic key by deliberate configuration.
     return "SHOTSTACK_API_KEY" if os.environ.get("SHOTSTACK_API_KEY", "").strip() else "missing"
 
 
