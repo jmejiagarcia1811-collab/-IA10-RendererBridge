@@ -1270,7 +1270,7 @@ def background_queue_worker():
         except Exception as exc:
             print("queue_worker_guard_error type=%s action=retry_next_cycle" % type(exc).__name__, flush=True)
             continue
-        provider_key = os.environ.get("SHOTSTACK_API_KEY", "").strip()
+        provider_key = _shotstack_key_for_base(os.environ.get("SHOTSTACK_API_BASE", "https://api.shotstack.io/edit/stage"))
         if provider_key and not local_pending:
             try:
                 poll_submitted_render()
