@@ -81,7 +81,7 @@ def render_local_content(title, spec, filename, media_dir):
             os.environ.get("PYTHON", "python"), "-m", "edge_tts",
             "--voice", os.environ.get("IA10_TTS_VOICE", "es-ES-AlvaroNeural"),
             "--text", script, "--write-media", str(audio)
-        ], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=60)
+        ], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=180)
         subprocess.run([
             ffmpeg, "-y", "-loop", "1", "-framerate", "24", "-i", str(image),
             "-i", str(audio), "-vf", "scale=1080:1920,format=yuv420p",
