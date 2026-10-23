@@ -79,23 +79,29 @@ def render_local_content(title, spec, filename, media_dir):
         # MP4 muxing/audio-stream/QC without depending on an external TTS service.
         # Real content continues to require Spanish neural TTS and fails explicitly.
         if str(title).startswith("IA10_LOCAL_RENDER_SMOKE_TEST"):
+            # One bounded FFmpeg process avoids slow audio-file generation on
+            # the free instance while still exercising video/audio muxing.
             subprocess.run([
-                ffmpeg, "-y", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo",
-                "-t", "15", "-q:a", "9", str(audio)
-            ], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=20)
+                ffmpeg, "-y", "-loop", "1", "-framerate", "24", "-i", str(image),
+                "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo",
+                "-vf", "scale=1080:1920,format=yuv420p",
+                "-c:v", "libx264", "-preset", "ultrafast", "-threads", "1",
+                "-c:a", "aac", "-b:a", "64k", "-shortest", "-t", "5",
+                "-movflags", "+faststart", str(output)
+            ], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=45)
         else:
             subprocess.run([
                 os.environ.get("PYTHON", "python"), "-m", "edge_tts",
                 "--voice", os.environ.get("IA10_TTS_VOICE", "es-ES-AlvaroNeural"),
                 "--text", script, "--write-media", str(audio)
             ], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=60)
-        subprocess.run([
-            ffmpeg, "-y", "-loop", "1", "-framerate", "24", "-i", str(image),
-            "-i", str(audio), "-vf", "scale=1080:1920,format=yuv420p",
-            "-c:v", "libx264", "-preset", "ultrafast", "-threads", "1",
-            "-c:a", "aac", "-b:a", "128k", "-shortest", "-t", "15",
-            "-movflags", "+faststart", str(output)
-        ], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=60)
+            subprocess.run([
+                ffmpeg, "-y", "-loop", "1", "-framerate", "24", "-i", str(image),
+                "-i", str(audio), "-vf", "scale=1080:1920,format=yuv420p",
+                "-c:v", "libx264", "-preset", "ultrafast", "-threads", "1",
+                "-c:a", "aac", "-b:a", "128k", "-shortest", "-t", "15",
+                "-movflags", "+faststart", str(output)
+            ], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=60)
     finally:
         for tmp in (audio, image):
             try:
