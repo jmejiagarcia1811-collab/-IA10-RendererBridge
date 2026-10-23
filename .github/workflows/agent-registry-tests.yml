@@ -29,4 +29,6 @@ jobs:
         with:
           python-version: "3.12"
       - name: Validate agent registry
-        run: python -m unittest discover -s tests -p 'test_agents_registry.py' -v
+        run: |
+          python -m unittest discover -s tests -p 'test_agents_registry.py' -v
+          python -m unittest discover -s tests -p 'test_supervisor_agent_catalog.py' -v
