@@ -738,12 +738,36 @@ class Handler(BaseHTTPRequestHandler):
                 print("queue_probe db=%s queued_count_sample=%s first_job_id=%s states=%s failures=%s" % (
                     db_fingerprint, len(queued), str(queued[0]["id"]) if queued else "none",
                     json.dumps(state_counts, sort_keys=True), json.dumps(failure_counts, sort_keys=True)), flush=True)
-                job = queued[0] if queued else None
+                # Claim exactly one job under a database lock. The earlier queued
+                # query is diagnostic only; never trust that snapshot to claim work.
+                # PostgreSQL workers skip rows locked by other workers; SQLite takes
+                # an immediate write lock. The conditional UPDATE is a second guard.
+                con.commit()
+                if DATABASE_URL:
+                    execute(con, "BEGIN")
+                    job = execute(con, """SELECT * FROM jobs
+                        WHERE state='QUEUED' AND COALESCE(retry_after,0) <= %s
+                        ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED""",
+                        (int(time.time()),)).fetchone()
+                else:
+                    execute(con, "BEGIN IMMEDIATE")
+                    job = execute(con, """SELECT * FROM jobs
+                        WHERE state='QUEUED' AND COALESCE(retry_after,0) <= %s
+                        ORDER BY id LIMIT 1""", (int(time.time()),)).fetchone()
                 if not job:
+                    con.commit()
                     con.close()
                     return self.send_json(200, {"processed":False,"note":"queue_empty"})
-                execute(con, "UPDATE jobs SET state='PROCESSING',retry_count=COALESCE(retry_count,0)+1,updated_at=%s WHERE id=%s", (int(time.time()),job["id"]))
-                con.commit(); con.close()
+                claim = execute(con, """UPDATE jobs
+                    SET state='PROCESSING', retry_count=COALESCE(retry_count,0)+1, updated_at=%s
+                    WHERE id=%s AND state='QUEUED'""", (int(time.time()),job["id"]))
+                if claim.rowcount != 1:
+                    con.rollback()
+                    con.close()
+                    print("queue_claim_conflict id=%s" % job["id"], flush=True)
+                    return self.send_json(200, {"processed":False,"note":"queue_claim_conflict_retry"})
+                con.commit()
+                con.close()
             except Exception:
                 return self.send_json(503, {"error":"database_unavailable"})
             # Validate the stored render payload separately from the provider call.
