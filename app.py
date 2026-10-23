@@ -794,15 +794,16 @@ class Handler(BaseHTTPRequestHandler):
             if local_enabled and isinstance(local_spec, dict) and not str(job["title"]).startswith("IA10_BOOTSTRAP_TEST_RENDER"):
                 try:
                     filename = "local-%s.mp4" % job["id"]
-                    render_local_content(job["title"], local_spec, filename, MEDIA_DIR)
+                    local_video_path = render_local_content(job["title"], local_spec, filename, MEDIA_DIR)
                     public_url = os.environ.get("IA10_PUBLIC_BASE_URL", "https://ia10-renderer-bridge.onrender.com").rstrip("/") + "/media/" + filename
-                    # Persist the exact provider and URL before QC fetches /media/<id>.
-                    # This keeps the in-progress media exception narrow and auditable.
+                    # Persist provider and URL for later viewing, but QC the file on this
+                    # instance directly: fetching our own public URL can route to another
+                    # ephemeral instance and hang or regenerate media unnecessarily.
                     con = connect_db()
                     execute(con, "UPDATE jobs SET provider_id=%s,render_url=%s,updated_at=%s WHERE id=%s AND state='PROCESSING'",
                             ("local-ffmpeg-edge-tts", public_url, int(time.time()), job["id"]))
                     con.commit(); con.close()
-                    passed, qc_detail = technical_video_qc(public_url)
+                    passed, qc_detail = technical_video_qc(public_url, local_file=str(local_video_path))
                     now = int(time.time())
                     new_state = "QC_PENDING_REVIEW" if passed else "QC_FAILED"
                     con = connect_db()
@@ -911,22 +912,26 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         print("%s - %s"%(self.log_date_time_string(),fmt%args),flush=True)
 
-def technical_video_qc(url):
-    """Decode a provider MP4 and check basic technical properties; never approves editorial content."""
-    if not isinstance(url, str) or not url.startswith("https://"):
+def technical_video_qc(url, local_file=None):
+    """Decode a provider MP4 or a local renderer artifact; never approves editorial content."""
+    if local_file is None and (not isinstance(url, str) or not url.startswith("https://")):
         return False, "missing_or_non_https_render_url"
     try:
         import re, imageio_ffmpeg
         ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
-        # Fetch the provider output first, then decode the local file. Some signed
-        # render URLs/redirects are not handled consistently by static FFmpeg builds.
-        # Never log the URL because it may contain temporary access signatures.
-        with tempfile.NamedTemporaryFile(prefix="ia10-qc-", suffix=".mp4", delete=False) as tmp:
-            local_path = tmp.name
+        # Local renders are QC'd from the file just produced on this instance.
+        # Provider renders are downloaded from HTTPS; never log signed URLs.
+        temporary_path = None
         try:
-            request = urllib.request.Request(url, headers={"User-Agent": "IA10-Technical-QC/1.0"})
-            with urllib.request.urlopen(request, timeout=45) as response, open(local_path, "wb") as output_file:
-                shutil.copyfileobj(response, output_file)
+            if local_file is not None:
+                local_path = str(local_file)
+            else:
+                with tempfile.NamedTemporaryFile(prefix="ia10-qc-", suffix=".mp4", delete=False) as tmp:
+                    temporary_path = tmp.name
+                local_path = temporary_path
+                request = urllib.request.Request(url, headers={"User-Agent": "IA10-Technical-QC/1.0"})
+                with urllib.request.urlopen(request, timeout=45) as response, open(local_path, "wb") as output_file:
+                    shutil.copyfileobj(response, output_file)
             if os.path.getsize(local_path) < 1024:
                 return False, "render_file_too_small"
             proc = subprocess.run([ffmpeg, "-v", "info", "-i", local_path, "-f", "null", "-"],
@@ -944,10 +949,11 @@ def technical_video_qc(url):
             print("technical_qc_download_error type=%s" % type(exc).__name__, flush=True)
             return False, "render_url_download_failed"
         finally:
-            try:
-                os.unlink(local_path)
-            except OSError:
-                pass
+            if temporary_path:
+                try:
+                    os.unlink(temporary_path)
+                except OSError:
+                    pass
         duration_match = re.search(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)", output)
         duration = (int(duration_match.group(1)) * 3600 + int(duration_match.group(2)) * 60 +
                     float(duration_match.group(3))) if duration_match else 0
