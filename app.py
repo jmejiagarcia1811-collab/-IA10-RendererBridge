@@ -297,7 +297,8 @@ def check_shotstack_credentials():
             with urllib.request.urlopen(req, timeout=12) as response:
                 print("provider_auth_probe environment=%s key_source=%s key_mode=%s status=%s result=%s" % (env_name, source, key_mode, response.status, "ok" if response.status == 200 else "unexpected_status"), flush=True)
         except urllib.error.HTTPError as exc:
-            hint = "unauthorized" if exc.code == 401 else "forbidden_key_or_account_permissions" if exc.code == 403 else "http_error"            detail = _shotstack_safe_error_detail(exc) if exc.code in (401, 403) else "not_read"
+            hint = "unauthorized" if exc.code == 401 else "forbidden_key_or_account_permissions" if exc.code == 403 else "http_error"
+            detail = _shotstack_safe_error_detail(exc) if exc.code in (401, 403) else "not_read"
             print("provider_auth_probe environment=%s key_source=%s key_mode=%s status=%s result=%s detail=%s" % (env_name, source, key_mode, exc.code, hint, detail), flush=True)
         except Exception as exc:
             print("provider_auth_probe environment=%s key_source=%s result=network_error type=%s" % (env_name, source, type(exc).__name__), flush=True)
@@ -596,7 +597,8 @@ class Handler(BaseHTTPRequestHandler):
                 if not job:
                     return self.send_json(404, {"error":"job_not_found"})
                 return self.send_json(200, {"job":dict(job)})
-            except Exception:                return self.send_json(503, {"error":"database_unavailable"})
+            except Exception:
+                return self.send_json(503, {"error":"database_unavailable"})
         self.send_json(404, {"error":"not_found"})
 
     def do_POST(self):
@@ -969,7 +971,8 @@ def technical_video_qc(url):
                 # Keep a few sanitized FFmpeg error lines for diagnosis; strip signed URLs/tokens.
                 import re
                 safe_lines = []
-                diagnostic_markers = (                    "http error", "server returned", "403 forbidden", "404 not found",
+                diagnostic_markers = (
+                    "http error", "server returned", "403 forbidden", "404 not found",
                     "timed out", "connection refused", "connection reset", "tls error",
                     "error opening input", "failed to open", "moov atom not found",
                     "invalid data found", "could not find codec parameters",
