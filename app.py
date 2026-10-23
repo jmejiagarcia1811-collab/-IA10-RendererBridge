@@ -394,7 +394,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200 if db_ok else 503, {
               "service":"ia10-renderer-bridge", "status":"alive" if db_ok else "degraded",
               "database_mode":db_mode, "database_ok":db_ok,
-              "render_configured":bool(os.environ.get("SHOTSTACK_API_KEY")),
+              "render_configured":bool(_shotstack_key_for_base(os.environ.get("SHOTSTACK_API_BASE", "https://api.shotstack.io/edit/stage"))),
               "auth_configured":bool(os.environ.get("IA10_BRIDGE_TOKEN")),
               "bootstrap_test_enabled":os.environ.get("IA10_BOOTSTRAP_TEST_RENDER", "").strip().lower() in ("1", "true", "yes"),
               "queue_counts":queue_counts, "failure_categories":failure_categories, "diagnostics_ok":diagnostics_ok,
@@ -1337,7 +1337,7 @@ def background_queue_worker():
     """Poll the guarded queue while this free web service is awake."""
     interval = max(15, int(os.environ.get("IA10_WORKER_INTERVAL_SECONDS", "30")))
     print("queue_worker_started interval=%s provider_key_configured=%s auth_token_configured=%s" % (
-        interval, bool(os.environ.get("SHOTSTACK_API_KEY", "").strip()),
+        interval, bool(_shotstack_key_for_base(os.environ.get("SHOTSTACK_API_BASE", "https://api.shotstack.io/edit/stage"))),
         bool(os.environ.get("IA10_BRIDGE_TOKEN", ""))), flush=True)
     while True:
         time.sleep(interval)
