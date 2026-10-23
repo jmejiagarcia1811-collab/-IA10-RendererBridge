@@ -104,6 +104,15 @@ def ingest_rss_once(connect_db, execute):
         queued = execute(con, "SELECT COUNT(*) AS count FROM jobs WHERE title LIKE %s AND state='QUEUED'",
                          ("IA10_RSS_%",)).fetchone()
         queued_count = int(queued["count"] or 0)
+        # Safety brake: stop intake when human editorial review is falling behind.
+        # This does not approve, reject, delete, or publish any existing job.
+        review_limit = max(5, min(500, int(os.environ.get("IA10_RSS_REVIEW_BACKLOG_LIMIT", "20"))))
+        review_pending = execute(con, "SELECT COUNT(*) AS count FROM jobs WHERE state='QC_PENDING_REVIEW'", ()).fetchone()
+        review_pending_count = int(review_pending["count"] or 0)
+        if review_pending_count >= review_limit:
+            print("rss_ingest skipped reason=editorial_review_backlog pending=%s limit=%s" %
+                  (review_pending_count, review_limit), flush=True)
+            return
         if queued_count >= target_backlog:
             print("rss_ingest skipped reason=backlog_sufficient queued=%s target=%s" %
                   (queued_count, target_backlog), flush=True)
