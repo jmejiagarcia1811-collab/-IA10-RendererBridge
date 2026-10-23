@@ -1,0 +1,31 @@
+name: IA 3.0 agent registry checks
+
+on:
+  pull_request:
+    paths:
+      - "config/agents_registry.json"
+      - "tests/test_agents_registry.py"
+      - ".github/workflows/agent-registry-tests.yml"
+  push:
+    branches:
+      - "plan/99-agentes-ia30"
+    paths:
+      - "config/agents_registry.json"
+      - "tests/test_agents_registry.py"
+      - ".github/workflows/agent-registry-tests.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  registry-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate agent registry
+        run: python -m unittest discover -s tests -v
