@@ -81,14 +81,14 @@ def render_local_content(title, spec, filename, media_dir):
             os.environ.get("PYTHON", "python"), "-m", "edge_tts",
             "--voice", os.environ.get("IA10_TTS_VOICE", "es-ES-AlvaroNeural"),
             "--text", script, "--write-media", str(audio)
-        ], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=180)
+        ], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=240)
         subprocess.run([
             ffmpeg, "-y", "-loop", "1", "-framerate", "24", "-i", str(image),
             "-i", str(audio), "-vf", "scale=1080:1920,format=yuv420p",
             "-c:v", "libx264", "-preset", "ultrafast", "-threads", "1",
             "-c:a", "aac", "-b:a", "128k", "-shortest", "-t", "15",
             "-movflags", "+faststart", str(output)
-        ], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=60)
+        ], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=180)
     finally:
         for tmp in (audio, image):
             try:
