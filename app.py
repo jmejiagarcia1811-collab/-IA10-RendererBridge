@@ -613,6 +613,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(400, {"error":"invalid_json_or_body_size"})
 
         if path == "/agent/supervisor":
+            if not self.authorized():
+                return self.send_json(401, {"error":"unauthorized"})
             status, result = run_supervisor(os.environ.get("IA10_BRIDGE_TOKEN", ""))
             return self.send_json(status, result)
 
