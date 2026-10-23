@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - "config/agents_registry.json"
+      - "agent_registry.py"
       - "tests/test_agents_registry.py"
       - ".github/workflows/agent-registry-tests.yml"
   push:
