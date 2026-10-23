@@ -1,7 +1,7 @@
-"""Allowlisted, single-order executor for the IA10 bridge.
+"""Allowlisted, persistent order executor for the IA10 bridge.
 
-No arbitrary shell/Python execution, no publishing, and no destructive DB actions.
-Orders are handled in memory and are not persisted as payloads.
+Only allowlisted actions run. Failed orders remain stored for retry.
+Successful orders are deleted. No arbitrary shell/Python execution or publishing.
 """
 import json
 import os
@@ -36,17 +36,14 @@ def execute_order(action, token):
                 result = json.loads(raw.decode("utf-8"))
             except Exception:
                 result = {"response": "non_json"}
-            return response.status, {"ok": 200 <= response.status < 300,
-                                     "action": action, "result": result,
-                                     "temporary_order_discarded": True}
+            success = 200 <= response.status < 300
+            if action == "process_next" and isinstance(result, dict) and result.get("processed") is False:
+                success = False
+            return response.status, {"ok": success, "action": action, "result": result}
     except urllib.error.HTTPError as exc:
-        # Do not echo provider bodies, headers, or credentials.
         return 502, {"ok": False, "action": action,
-                     "error": "internal_action_http_error",
-                     "upstream_status": exc.code,
-                     "temporary_order_discarded": True}
+                     "error": "internal_action_http_error", "upstream_status": exc.code}
     except Exception as exc:
         return 503, {"ok": False, "action": action,
                      "error": "internal_action_unavailable",
-                     "error_type": type(exc).__name__,
-                     "temporary_order_discarded": True}
+                     "error_type": type(exc).__name__}
