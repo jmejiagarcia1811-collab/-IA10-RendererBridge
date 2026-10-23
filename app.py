@@ -1191,7 +1191,11 @@ def bootstrap_test_render_once():
 
 def local_renderer_smoke_test_once():
     """Queue one non-publishable local-render smoke test when explicitly enabled."""
+    # Diagnostic jobs require a second explicit opt-in to prevent accidental re-enqueueing.
     if os.environ.get("IA10_LOCAL_RENDER_SMOKE_TEST", "").strip().lower() not in ("1", "true", "yes"):
+        return
+    if os.environ.get("IA10_ENABLE_DIAGNOSTIC_SMOKE_TESTS", "").strip().lower() not in ("1", "true", "yes"):
+        print("local_renderer_smoke disabled_by_safety_gate", flush=True)
         return
     run_id = os.environ.get("IA10_LOCAL_RENDER_SMOKE_TEST_RUN_ID", "V1").strip()[:40] or "V1"
     run_id = "".join(ch for ch in run_id if ch.isalnum() or ch in "-_") or "V1"
