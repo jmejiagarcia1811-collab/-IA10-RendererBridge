@@ -793,7 +793,7 @@ class Handler(BaseHTTPRequestHandler):
                     print("local_renderer_failed id=%s type=%s" % (job["id"], type(local_exc).__name__), flush=True)
                     con = connect_db()
                     execute(con, "UPDATE jobs SET state='FAILED',error=%s,updated_at=%s WHERE id=%s",
-                            ("local_renderer_failed_" + type(local_exc).__name__)[:180], int(time.time()), job["id"])
+                            (("local_renderer_failed_" + type(local_exc).__name__)[:180], int(time.time()), job["id"]))
                     con.commit(); con.close()
                     return self.send_json(502, {"processed":True,"id":job["id"],"state":"FAILED","error":"local_renderer_failed"})
             retryable_failure = False
