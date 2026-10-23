@@ -297,8 +297,7 @@ def check_shotstack_credentials():
             with urllib.request.urlopen(req, timeout=12) as response:
                 print("provider_auth_probe environment=%s key_source=%s key_mode=%s status=%s result=%s" % (env_name, source, key_mode, response.status, "ok" if response.status == 200 else "unexpected_status"), flush=True)
         except urllib.error.HTTPError as exc:
-            hint = "unauthorized" if exc.code == 401 else "forbidden_key_or_account_permissions" if exc.code == 403 else "http_error"
-            detail = _shotstack_safe_error_detail(exc) if exc.code in (401, 403) else "not_read"
+            hint = "unauthorized" if exc.code == 401 else "forbidden_key_or_account_permissions" if exc.code == 403 else "http_error"            detail = _shotstack_safe_error_detail(exc) if exc.code in (401, 403) else "not_read"
             print("provider_auth_probe environment=%s key_source=%s key_mode=%s status=%s result=%s detail=%s" % (env_name, source, key_mode, exc.code, hint, detail), flush=True)
         except Exception as exc:
             print("provider_auth_probe environment=%s key_source=%s result=network_error type=%s" % (env_name, source, type(exc).__name__), flush=True)
@@ -597,8 +596,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not job:
                     return self.send_json(404, {"error":"job_not_found"})
                 return self.send_json(200, {"job":dict(job)})
-            except Exception:
-                return self.send_json(503, {"error":"database_unavailable"})
+            except Exception:                return self.send_json(503, {"error":"database_unavailable"})
         self.send_json(404, {"error":"not_found"})
 
     def do_POST(self):
@@ -738,12 +736,36 @@ class Handler(BaseHTTPRequestHandler):
                 print("queue_probe db=%s queued_count_sample=%s first_job_id=%s states=%s failures=%s" % (
                     db_fingerprint, len(queued), str(queued[0]["id"]) if queued else "none",
                     json.dumps(state_counts, sort_keys=True), json.dumps(failure_counts, sort_keys=True)), flush=True)
-                job = queued[0] if queued else None
+                # Claim exactly one job under a database lock. The earlier queued
+                # query is diagnostic only; never trust that snapshot to claim work.
+                # PostgreSQL workers skip rows locked by other workers; SQLite takes
+                # an immediate write lock. The conditional UPDATE is a second guard.
+                con.commit()
+                if DATABASE_URL:
+                    execute(con, "BEGIN")
+                    job = execute(con, """SELECT * FROM jobs
+                        WHERE state='QUEUED' AND COALESCE(retry_after,0) <= %s
+                        ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED""",
+                        (int(time.time()),)).fetchone()
+                else:
+                    execute(con, "BEGIN IMMEDIATE")
+                    job = execute(con, """SELECT * FROM jobs
+                        WHERE state='QUEUED' AND COALESCE(retry_after,0) <= %s
+                        ORDER BY id LIMIT 1""", (int(time.time()),)).fetchone()
                 if not job:
+                    con.commit()
                     con.close()
                     return self.send_json(200, {"processed":False,"note":"queue_empty"})
-                execute(con, "UPDATE jobs SET state='PROCESSING',retry_count=COALESCE(retry_count,0)+1,updated_at=%s WHERE id=%s", (int(time.time()),job["id"]))
-                con.commit(); con.close()
+                claim = execute(con, """UPDATE jobs
+                    SET state='PROCESSING', retry_count=COALESCE(retry_count,0)+1, updated_at=%s
+                    WHERE id=%s AND state='QUEUED'""", (int(time.time()),job["id"]))
+                if claim.rowcount != 1:
+                    con.rollback()
+                    con.close()
+                    print("queue_claim_conflict id=%s" % job["id"], flush=True)
+                    return self.send_json(200, {"processed":False,"note":"queue_claim_conflict_retry"})
+                con.commit()
+                con.close()
             except Exception:
                 return self.send_json(503, {"error":"database_unavailable"})
             # Validate the stored render payload separately from the provider call.
@@ -948,336 +970,3 @@ def technical_video_qc(url):
                 import re
                 safe_lines = []
                 diagnostic_markers = (
-                    "http error", "server returned", "403 forbidden", "404 not found",
-                    "timed out", "connection refused", "connection reset", "tls error",
-                    "error opening input", "failed to open", "moov atom not found",
-                    "invalid data found", "could not find codec parameters",
-                    "protocol not found", "operation not permitted", "network is unreachable"
-                )
-                output_lines = output.splitlines()
-                for line in output_lines:
-                    ll = line.lower()
-                    if any(marker in ll for marker in diagnostic_markers):
-                        line = re.sub(r"https?://[^\\s'\"<>]+", "[URL_REDACTED]", line)
-                        line = re.sub(r"(?i)(token|signature|key)=([^&\\s]+)", r"\\1=[REDACTED]", line)
-                        safe_lines.append(line[:180])
-                # Some FFmpeg builds phrase fetch failures differently. If no known marker
-                # matched, emit only sanitized lines that look like errors, never the signed URL.
-                if not safe_lines:
-                    fallback_markers = ("error", "failed", "denied", "refused", "timeout", "timed out",
-                                        "invalid", "http", "opening", "server", "tls", "ssl", "network")
-                    for line in output_lines:
-                        if any(marker in line.lower() for marker in fallback_markers):
-                            line = re.sub(r"https?://[^\\s'\"<>]+", "[URL_REDACTED]", line)
-                            line = re.sub(r"(?i)(token|signature|key)=([^&\\s]+)", r"\\1=[REDACTED]", line)
-                            safe_lines.append(line[:180])
-                print("technical_qc_fetch_detail " + " | ".join(safe_lines[-5:])[:600], flush=True)
-                return False, "render_url_fetch_failed"
-            if "moov atom not found" in low or "invalid data found" in low or "could not find codec parameters" in low:
-                return False, "render_file_invalid_or_incomplete"
-            # Emit a sanitized diagnostic for other decoder failures too; never log signed URLs.
-            safe_lines = []
-            diagnostic_markers = ("error", "failed", "denied", "refused", "timeout", "timed out",
-                                  "invalid", "http", "opening", "server", "tls", "ssl", "network",
-                                  "protocol", "not found", "forbidden", "unreachable", "permission")
-            for line in output.splitlines():
-                if any(marker in line.lower() for marker in diagnostic_markers):
-                    line = re.sub(r"https?://[^\\s'\"<>]+", "[URL_REDACTED]", line)
-                    line = re.sub(r"(?i)(token|signature|key)=([^&\\s]+)", r"\\1=[REDACTED]", line)
-                    safe_lines.append(line[:180])
-            if safe_lines:
-                print("technical_qc_decode_detail " + " | ".join(safe_lines[-5:])[:600], flush=True)
-            return False, "ffmpeg_decode_failed"
-        if not dimensions:
-            return False, "video_stream_or_dimensions_missing"
-        # Publishing pipeline expects audible content; do not pass silent MP4s through technical QC.
-        if not re.search(r"\bAudio:", output, re.IGNORECASE):
-            return False, "audio_stream_missing"
-        width, height = dimensions
-        if height <= width:
-            return False, "not_portrait"
-        if not 4 <= duration <= 15:
-            return False, "duration_out_of_range"
-        return True, "decoded_portrait_%sx%s_duration_%.2fs_audio_stream_present" % (width, height, duration)
-    except subprocess.TimeoutExpired:
-        return False, "technical_qc_timeout"
-    except Exception as exc:
-        return False, "technical_qc_error_" + type(exc).__name__
-
-def poll_submitted_render():
-    """Poll one submitted Shotstack render and persist its terminal state."""
-    base = os.environ.get("SHOTSTACK_API_BASE", "https://api.shotstack.io/edit/stage").strip().rstrip("/")
-    key = _shotstack_key_for_base(base)
-    if not key:
-        return
-    con = connect_db()
-    try:
-        job = execute(con, "SELECT id,provider_id,state,render_url,title FROM jobs WHERE state='RENDER_SUBMITTED' AND provider_id IS NOT NULL AND provider_id<>'' ORDER BY updated_at LIMIT 1").fetchone()
-    finally:
-        con.close()
-    if not job:
-        return
-    if str(job.get("state", "")) == "RENDERED":
-        passed, detail = technical_video_qc(str(job.get("render_url") or ""))
-        new_state = "QC_PENDING_REVIEW" if passed else "QC_FAILED"
-        con = connect_db()
-        execute(con, "UPDATE jobs SET state=%s,error=%s,updated_at=%s WHERE id=%s AND state='RENDERED'",
-                (new_state, detail[:180], int(time.time()), job["id"]))
-        con.commit(); con.close()
-        print("technical_qc id=%s state=%s result=%s" % (job["id"], new_state, detail[:120]), flush=True)
-        return
-    req = urllib.request.Request(base + "/render/" + str(job["provider_id"]),
-        headers={"x-api-key": key}, method="GET")
-    try:
-        with urllib.request.urlopen(req, timeout=20) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-        data = payload.get("response") or payload.get("data") or {}
-        status = str(data.get("status", "")).lower()
-        now = int(time.time())
-        if status in ("done", "completed", "complete"):
-            render_url = data.get("url") or data.get("output") or ""
-            passed, detail = technical_video_qc(str(render_url))
-            new_state = "QC_PENDING_REVIEW" if passed else "QC_FAILED"
-            con = connect_db()
-            execute(con, "UPDATE jobs SET state=%s,render_url=%s,error=%s,updated_at=%s WHERE id=%s AND state='RENDER_SUBMITTED'",
-                    (new_state, str(render_url)[:2000], detail[:180], now, job["id"]))
-            con.commit(); con.close()
-            print("render_poll id=%s state=%s result=%s" % (job["id"], new_state, detail[:120]), flush=True)
-        elif status in ("failed", "error"):
-            detail = "shotstack_render_failed"
-            con = connect_db()
-            execute(con, "UPDATE jobs SET state='FAILED',error=%s,updated_at=%s WHERE id=%s AND state='RENDER_SUBMITTED'",
-                    (detail, now, job["id"]))
-            con.commit(); con.close()
-            print("render_poll id=%s state=FAILED" % job["id"], flush=True)
-        else:
-            print("render_poll id=%s provider_status=%s" % (job["id"], status or "unknown"), flush=True)
-    except Exception as exc:
-        print("render_poll_error id=%s type=%s" % (job["id"], type(exc).__name__), flush=True)
-
-def recover_interrupted_bootstrap_jobs():
-    """Recover only diagnostic jobs interrupted before a provider render ID was assigned."""
-    con = connect_db()
-    try:
-        cur = execute(con, "UPDATE jobs SET state=%s,error=%s,updated_at=%s WHERE state='PROCESSING' AND title LIKE %s AND (provider_id IS NULL OR provider_id='')",
-                      ("QUEUED", "requeued_after_interrupted_diagnostic", int(time.time()), "IA10_BOOTSTRAP_TEST_RENDER%"))
-        count = cur.rowcount
-        con.commit()
-        print("queue_recovery requeued_bootstrap=%s" % count, flush=True)
-    finally:
-        con.close()
-
-def recover_stale_processing_jobs():
-    """Requeue work left PROCESSING after a worker/process interruption."""
-    now = int(time.time())
-    # Local renders take seconds; provider requests have bounded timeouts.
-    # A 15-minute grace period avoids touching work that may still be active.
-    cutoff = now - max(900, int(os.environ.get("IA10_STALE_PROCESSING_SECONDS", "900")))
-    con = connect_db()
-    try:
-        cur = execute(
-            con,
-            "UPDATE jobs SET state='QUEUED',error=%s,updated_at=%s "
-            "WHERE state='PROCESSING' AND updated_at < %s",
-            ("requeued_after_stale_processing", now, cutoff))
-        count = cur.rowcount
-        con.commit()
-        if count:
-            print("queue_recovery requeued_stale_processing=%s grace_seconds=%s" %
-                  (count, now - cutoff), flush=True)
-        return count
-    finally:
-        con.close()
-
-def bootstrap_test_render_once():
-    """Optionally enqueue one idempotent sandbox render without exposing a public unauthenticated endpoint."""
-    if os.environ.get("IA10_BOOTSTRAP_TEST_RENDER", "").strip().lower() not in ("1", "true", "yes"):
-        return
-    # Optional run ID allows an explicitly requested fresh diagnostic without duplicating services.
-    run_id = os.environ.get("IA10_BOOTSTRAP_TEST_RUN_ID", "").strip()
-    if run_id and not all(ch.isalnum() or ch in "-_" for ch in run_id):
-        print("bootstrap_test_render invalid_run_id", flush=True)
-        return
-    title = "IA10_BOOTSTRAP_TEST_RENDER_1080_VERTICAL_5" + ("_" + run_id if run_id else "")
-    edit = {
-        "timeline": {
-            "background": "#101820",
-            "tracks": [{
-                "clips": [{
-                    "asset": {
-                        "type": "video",
-                        "src": "https://samplelib.com/lib/preview/mp4/sample-5s.mp4",
-                        "volume": 1
-                    },
-                    "start": 0,
-                    "length": 5,
-                    "fit": "crop"
-                }]
-            }]
-        },
-        "output": {
-            "format": "mp4",
-            "resolution": "1080",
-            "aspectRatio": "9:16"
-        }
-    }
-    con = connect_db()
-    try:
-        existing = execute(con, "SELECT id,state,error FROM jobs WHERE title=%s LIMIT 1", (title,)).fetchone()
-        if existing:
-            # Requeue only this named diagnostic bootstrap job after known queue
-            # or provider-auth failures, so a deploy can verify the current provider key.
-            existing_error = str(existing.get("error") or "")
-            if existing["state"] in ("FAILED", "QC_FAILED") and (
-                "render_error_KeyError" in existing_error or
-                "shotstack_sandbox_key_rejected" in existing_error or
-                "Shotstack Sandbox request rejected" in existing_error or
-                "render_url_fetch_failed" in existing_error or
-                "ffmpeg_decode_failed" in existing_error or
-                "render_file_invalid_or_incomplete" in existing_error
-            ):
-                now = int(time.time())
-                execute(con, "UPDATE jobs SET state='QUEUED',error=NULL,render_url=NULL,provider_id=NULL,updated_at=%s WHERE id=%s",
-                        (now, existing["id"]))
-                con.commit()
-                print("bootstrap_test_render requeued_diagnostic_retry id=%s" % existing["id"], flush=True)
-            else:
-                print("bootstrap_test_render already_exists id=%s state=%s" % (existing["id"], existing["state"]), flush=True)
-            return
-        now = int(time.time())
-        inserted = execute(con, "INSERT INTO jobs(title,edit_json,state,created_at,updated_at) VALUES(%s,%s,%s,%s,%s) RETURNING id",
-                (title, json.dumps(edit), "QUEUED", now, now)).fetchone()
-        con.commit()
-        db_fingerprint = "postgres" if DATABASE_URL else "sqlite"
-        if DATABASE_URL:
-            try:
-                import hashlib
-                db_fingerprint = hashlib.sha256(DATABASE_URL.encode("utf-8")).hexdigest()[:12]
-            except Exception:
-                db_fingerprint = "postgres"
-        print("bootstrap_test_render queued_once id=%s db=%s" % (inserted["id"], db_fingerprint), flush=True)
-    finally:
-        con.close()
-
-def local_renderer_smoke_test_once():
-    """Queue one non-publishable local-render smoke test when explicitly enabled."""
-    if os.environ.get("IA10_LOCAL_RENDER_SMOKE_TEST", "").strip().lower() not in ("1", "true", "yes"):
-        return
-    run_id = os.environ.get("IA10_LOCAL_RENDER_SMOKE_TEST_RUN_ID", "V1").strip()[:40] or "V1"
-    run_id = "".join(ch for ch in run_id if ch.isalnum() or ch in "-_") or "V1"
-    title = "IA10_LOCAL_RENDER_SMOKE_TEST_" + run_id
-    edit = {
-        "timeline": {"tracks": []},
-        "output": {"format": "mp4", "resolution": "1080", "aspectRatio": "9:16"},
-        "local_render": {
-            "headline": "Prueba real del renderizador local",
-            "script": "Esta es una prueba técnica del circuito IA tres punto cero. Comprobamos voz española, vídeo vertical, audio integrado y validación automática antes de cualquier revisión editorial.",
-            "source": "PRUEBA INTERNA; NO ES NOTICIA"
-        }
-    }
-    con = connect_db()
-    try:
-        existing = execute(con, "SELECT id,state FROM jobs WHERE title=%s LIMIT 1", (title,)).fetchone()
-        if existing:
-            print("local_renderer_smoke already_exists id=%s state=%s" % (existing["id"], existing["state"]), flush=True)
-            return
-        now = int(time.time())
-        row = execute(con, "INSERT INTO jobs(title,edit_json,state,created_at,updated_at) VALUES(%s,%s,%s,%s,%s) RETURNING id",
-                      (title, json.dumps(edit), "QUEUED", now, now)).fetchone()
-        con.commit()
-        print("local_renderer_smoke queued id=%s" % row["id"], flush=True)
-    finally:
-        con.close()
-
-def has_queued_local_render_job():
-    """Read-only check allowing local jobs to run without a working Shotstack key."""
-    con = connect_db()
-    try:
-        rows = execute(con, "SELECT edit_json FROM jobs WHERE state='QUEUED' ORDER BY id LIMIT 25").fetchall()
-        for row in rows:
-            try:
-                payload = json.loads(row["edit_json"])
-                if isinstance(payload, dict) and isinstance(payload.get("local_render"), dict):
-                    return True
-            except Exception:
-                continue
-        return False
-    finally:
-        con.close()
-
-def rss_intake_worker():
-    """Periodically enqueue up to five sourced Spanish items per rolling day for review."""
-    interval = max(60, int(os.environ.get("IA10_RSS_INTERVAL_SECONDS", "60")))
-    while True:
-        try:
-            ingest_rss_once(connect_db, execute)
-        except Exception as exc:
-            print("rss_ingest_worker_error type=%s" % type(exc).__name__, flush=True)
-        time.sleep(interval)
-
-def background_queue_worker():
-    """Poll the guarded queue while this free web service is awake."""
-    interval = max(15, int(os.environ.get("IA10_WORKER_INTERVAL_SECONDS", "30")))
-    print("queue_worker_started interval=%s provider_key_configured=%s auth_token_configured=%s" % (
-        interval, bool(os.environ.get("SHOTSTACK_API_KEY", "").strip()),
-        bool(os.environ.get("IA10_BRIDGE_TOKEN", ""))), flush=True)
-    while True:
-        time.sleep(interval)
-        # Recover jobs abandoned by a crashed/interrupted request before selecting new work.
-        # Only rows older than the conservative grace period are eligible.
-        try:
-            recover_stale_processing_jobs()
-        except Exception as exc:
-            print("queue_recovery_error type=%s action=retry_next_cycle" % type(exc).__name__, flush=True)
-        # Prefer the local FFmpeg fallback whenever a sourced local job is queued.
-        # A transient database exception must not permanently kill this daemon thread.
-        try:
-            local_pending = has_queued_local_render_job()
-        except Exception as exc:
-            print("queue_worker_guard_error type=%s action=retry_next_cycle" % type(exc).__name__, flush=True)
-            continue
-        provider_key = os.environ.get("SHOTSTACK_API_KEY", "").strip()
-        if provider_key and not local_pending:
-            try:
-                poll_submitted_render()
-            except Exception as exc:
-                print("render_poll_worker_error type=%s" % type(exc).__name__, flush=True)
-        elif not provider_key and not local_pending:
-            continue
-        token = os.environ.get("IA10_BRIDGE_TOKEN", "")
-        if not token:
-            continue
-        req = urllib.request.Request(
-            "http://127.0.0.1:%s/jobs/process-next" % PORT,
-            data=b"{}",
-            headers={"Content-Type": "application/json", "Authorization": "Bearer " + token},
-            method="POST")
-        try:
-            with urllib.request.urlopen(req, timeout=135) as response:
-                payload = response.read(1000).decode("utf-8", "replace")
-                print("queue_worker status=%s result=%s" % (response.status, payload), flush=True)
-        except urllib.error.HTTPError as exc:
-            # Log only safe response fields; never log request headers or credentials.
-            try:
-                raw = exc.read(4096).decode("utf-8", "replace")
-                try:
-                    payload = json.loads(raw)
-                except Exception:
-                    payload = {}
-                safe = {k: payload.get(k) for k in ("error", "state", "renderer", "diagnostic_url", "detail") if isinstance(payload, dict) and isinstance(payload.get(k), (str, int, bool))}
-                print("queue_worker_http_error status=%s response=%s" % (exc.code, json.dumps(safe, ensure_ascii=True)[:1200]), flush=True)
-            except Exception:
-                print("queue_worker_http_error status=%s response_parse_failed" % exc.code, flush=True)
-        except Exception as exc:
-            print("queue_worker_error type=%s" % type(exc).__name__, flush=True)
-
-if __name__ == "__main__":
-    connect_db().close()
-    check_shotstack_credentials()
-    recover_interrupted_bootstrap_jobs()
-    recover_stale_processing_jobs()
-    bootstrap_test_render_once()
-    local_renderer_smoke_test_once()
-    threading.Thread(target=background_queue_worker, name="ia10-queue-worker", daemon=True).start()
-    threading.Thread(target=rss_intake_worker, name="ia10-rss-intake", daemon=True).start()
-    ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()
