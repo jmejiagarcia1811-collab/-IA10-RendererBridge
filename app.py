@@ -210,6 +210,14 @@ def render_ia30_evergreen_video():
             except Exception:
                 pass
 
+def _shotstack_normalize_base(base):
+    """Accept either an environment base URL or its full /render endpoint."""
+    normalized = (base or "").strip().rstrip("/")
+    if normalized.endswith("/render"):
+        normalized = normalized[:-len("/render")]
+    return normalized
+
+
 def _shotstack_key_source_for_base(base):
     """Return only the variable name selected; never return or log a secret."""
     normalized = _shotstack_normalize_base(base)
