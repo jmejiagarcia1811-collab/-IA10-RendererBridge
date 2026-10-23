@@ -281,6 +281,8 @@ def submit_render(edit):
 
 _SHOTSTACK_AUTH_STATUS = {"checked_at": None, "environments": []}
 
+_SHOTSTACK_AUTH_STATUS = {"checked_at": None, "environments": []}
+
 def check_shotstack_credentials():
     """Read-only provider auth probe; cache sanitized status and never expose secrets."""
     global _SHOTSTACK_AUTH_STATUS
@@ -308,7 +310,7 @@ def check_shotstack_credentials():
         except urllib.error.HTTPError as exc:
             item.update({"status": "unauthorized" if exc.code == 401 else "forbidden_or_permissions" if exc.code == 403 else "http_error", "http_status": int(exc.code)})
             detail = _shotstack_safe_error_detail(exc) if exc.code in (401, 403) else "not_read"
-            print("provider_auth_probe environment=%s key_source=%s key_mode=%s status=%s result=%s detail=%s" % (env_name, source, key_mode, exc.code, item["status"], detail), flush=True)
+            print("provider_auth_probe environment=%s key_source=%s key_mode=%s status=%s detail=%s" % (env_name, source, key_mode, exc.code, detail), flush=True)
         except Exception as exc:
             item["status"] = "network_error"
             print("provider_auth_probe environment=%s key_source=%s result=network_error type=%s" % (env_name, source, type(exc).__name__), flush=True)
@@ -421,6 +423,16 @@ class Handler(BaseHTTPRequestHandler):
                 "checked_at": snapshot.get("checked_at"),
                 "environments": snapshot.get("environments", []),
                 "note": "Read-only cached credential check; refreshed when the service starts."
+            })
+            return
+        if path == "/provider-auth-status" and self.command == "GET":
+            # Cached startup probe only: no outbound request and no credentials exposed.
+            snapshot = _SHOTSTACK_AUTH_STATUS
+            self.send_json(200, {
+                "service": "ia10-renderer-bridge",
+                "checked_at": snapshot.get("checked_at"),
+                "environments": snapshot.get("environments", []),
+                "note": "Read-only cached check; refreshed when the service starts."
             })
             return
         if path in ("/queue-summary", "/queue-diagnostics") and self.command == "GET":
