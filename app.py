@@ -60,6 +60,11 @@ def parse_body(handler):
         raise ValueError("invalid_body_size")
     return json.loads(handler.rfile.read(length).decode("utf-8"))
 
+def _is_valid_mp4_payload(data):
+    """Reject missing or clearly truncated MP4 files before serving them."""
+    return isinstance(data, (bytes, bytearray)) and len(data) >= 1024 and b"ftyp" in data[:64]
+
+
 EDITORIAL_QC_CHECKS = (
     "editorial_reviewed",
     "facts_sources_verified",
@@ -530,6 +535,8 @@ class Handler(BaseHTTPRequestHandler):
             media_path = MEDIA_DIR / filename
             try:
                 data = media_path.read_bytes()
+                if not _is_valid_mp4_payload(data):
+                    raise OSError("invalid_mp4_payload")
             except OSError:
                 # Render's filesystem is ephemeral and instances do not share files.
                 # Recreate only allowlisted diagnostic artifacts or a known local-render
@@ -594,6 +601,9 @@ class Handler(BaseHTTPRequestHandler):
                                 pass
                 else:
                     return self.send_json(404, {"error":"media_not_found"})
+            if not _is_valid_mp4_payload(data):
+                print("media_payload_invalid_after_recovery", flush=True)
+                return self.send_json(503, {"error":"media_invalid_after_recovery"})
             self.send_response(200)
             self.send_header("Content-Type", "video/mp4")
             self.send_header("Content-Length", str(len(data)))
