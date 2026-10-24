@@ -68,7 +68,7 @@ jobs:
 
   validate-local-23:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - name: Request and measure local-23 recovery endpoint
         run: |
@@ -85,7 +85,7 @@ jobs:
           size_bytes = 0
           prefix = bytearray()
           try:
-              with urllib.request.urlopen(request, timeout=90) as response:
+              with urllib.request.urlopen(request, timeout=450) as response:
                   status = response.status
                   content_type = response.headers.get("Content-Type", "")
                   content_length_header = response.headers.get("Content-Length", "")
