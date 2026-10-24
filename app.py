@@ -425,16 +425,6 @@ class Handler(BaseHTTPRequestHandler):
                 "note": "Read-only cached credential check; refreshed when the service starts."
             })
             return
-        if path == "/provider-auth-status" and self.command == "GET":
-            # Cached startup probe only: no outbound request and no credentials exposed.
-            snapshot = _SHOTSTACK_AUTH_STATUS
-            self.send_json(200, {
-                "service": "ia10-renderer-bridge",
-                "checked_at": snapshot.get("checked_at"),
-                "environments": snapshot.get("environments", []),
-                "note": "Read-only cached check; refreshed when the service starts."
-            })
-            return
         if path in ("/queue-summary", "/queue-diagnostics") and self.command == "GET":
             private_diagnostics = path == "/queue-diagnostics"
             if private_diagnostics and not self.authorized():
