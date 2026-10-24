@@ -3,6 +3,12 @@ name: IA10 Diagnostic MP4 Smoke Test
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/media-smoke.yml"
+      - "app.py"
+      - "tests/**"
   workflow_dispatch:
   schedule:
     - cron: "37 * * * *"
@@ -12,6 +18,7 @@ permissions:
 
 jobs:
   validate-mp4:
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -57,4 +64,62 @@ jobs:
                   if attempt < 2:
                       time.sleep(10)
           sys.exit(f"FAIL: live MP4 smoke test did not pass: {last_error}")
+          PY
+
+  validate-local-23:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Request and measure local-23 recovery endpoint
+        run: |
+          python - <<'PY'
+          import sys, urllib.error, urllib.request
+          url = "https://ia10-renderer-bridge.onrender.com/media/local-23.mp4"
+          request = urllib.request.Request(
+              url,
+              headers={"Cache-Control": "no-cache", "User-Agent": "IA10-local23-recovery-check"},
+          )
+          status = None
+          content_type = ""
+          content_length_header = ""
+          size_bytes = 0
+          prefix = bytearray()
+          try:
+              with urllib.request.urlopen(request, timeout=90) as response:
+                  status = response.status
+                  content_type = response.headers.get("Content-Type", "")
+                  content_length_header = response.headers.get("Content-Length", "")
+                  while True:
+                      chunk = response.read(65536)
+                      if not chunk:
+                          break
+                      size_bytes += len(chunk)
+                      if len(prefix) < 64:
+                          prefix.extend(chunk[:64 - len(prefix)])
+          except urllib.error.HTTPError as exc:
+              status = exc.code
+              content_type = exc.headers.get("Content-Type", "")
+              content_length_header = exc.headers.get("Content-Length", "")
+              body = exc.read()
+              size_bytes = len(body)
+              prefix.extend(body[:64])
+          except Exception as exc:
+              print(f"HTTP_STATUS={status if status is not None else 'NO_RESPONSE'}")
+              print(f"CONTENT_TYPE={content_type or 'unknown'}")
+              print(f"CONTENT_LENGTH_HEADER={content_length_header or 'unknown'}")
+              print(f"SIZE_BYTES_READ={size_bytes}")
+              print(f"ERROR_TYPE={type(exc).__name__}")
+              sys.exit(2)
+          print(f"HTTP_STATUS={status}")
+          print(f"CONTENT_TYPE={content_type or 'missing'}")
+          print(f"CONTENT_LENGTH_HEADER={content_length_header or 'missing'}")
+          print(f"SIZE_BYTES={size_bytes}")
+          print(f"MP4_FTYP_SIGNATURE={'present' if b'ftyp' in prefix else 'missing'}")
+          if status != 200:
+              sys.exit("FAIL: local-23 endpoint did not return HTTP 200")
+          if not content_type.lower().startswith("video/mp4"):
+              sys.exit("FAIL: local-23 response is not video/mp4")
+          if size_bytes < 1024 or b"ftyp" not in prefix:
+              sys.exit("FAIL: local-23 response is empty, truncated, or not an MP4 payload")
+          print("PASS: live local-23 transport/MP4 smoke test only; no editorial approval or publication.")
           PY
