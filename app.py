@@ -279,32 +279,44 @@ def submit_render(edit):
     with urllib.request.urlopen(req, timeout=25) as response:
         return json.loads(response.read().decode("utf-8"))
 
+_SHOTSTACK_AUTH_STATUS = {"checked_at": None, "environments": []}
+
+_SHOTSTACK_AUTH_STATUS = {"checked_at": None, "environments": []}
+
 def check_shotstack_credentials():
-    """Read-only environment-specific auth check; never logs keys or response bodies."""
+    """Read-only provider auth probe; cache sanitized status and never expose secrets."""
+    global _SHOTSTACK_AUTH_STATUS
     configured = _shotstack_normalize_base(os.environ.get("SHOTSTACK_API_BASE", "https://api.shotstack.io/edit/stage"))
     bases = []
     for candidate in (configured, "https://api.shotstack.io/edit/stage", "https://api.shotstack.io/edit/v1"):
         if candidate and candidate not in bases:
             bases.append(candidate)
+    results = []
     for base in bases:
         env_name = "stage" if base.endswith("/stage") else "production" if base.endswith("/v1") else "custom"
         source = _shotstack_key_source_for_base(base)
         key = _shotstack_key_for_base(base)
+        item = {"environment": env_name, "configured": bool(key), "status": "not_configured", "http_status": None}
         if not key:
             print("provider_auth_probe environment=%s key_source=missing result=not_configured" % env_name, flush=True)
+            results.append(item)
             continue
         key_mode = "environment_specific" if source in ("SHOTSTACK_STAGE_API_KEY", "SHOTSTACK_PRODUCTION_API_KEY") else "generic_fallback"
         try:
             req = urllib.request.Request(base + "/templates", headers={"Accept": "application/json", "x-api-key": key}, method="GET")
             with urllib.request.urlopen(req, timeout=12) as response:
-                print("provider_auth_probe environment=%s key_source=%s key_mode=%s status=%s result=%s" % (env_name, source, key_mode, response.status, "ok" if response.status == 200 else "unexpected_status"), flush=True)
+                item.update({"status": "ok" if response.status == 200 else "unexpected_status", "http_status": int(response.status)})
+                print("provider_auth_probe environment=%s key_source=%s key_mode=%s status=%s result=%s" % (env_name, source, key_mode, response.status, item["status"]), flush=True)
         except urllib.error.HTTPError as exc:
-            hint = "unauthorized" if exc.code == 401 else "forbidden_key_or_account_permissions" if exc.code == 403 else "http_error"
+            item.update({"status": "unauthorized" if exc.code == 401 else "forbidden_or_permissions" if exc.code == 403 else "http_error", "http_status": int(exc.code)})
             detail = _shotstack_safe_error_detail(exc) if exc.code in (401, 403) else "not_read"
-            print("provider_auth_probe environment=%s key_source=%s key_mode=%s status=%s result=%s detail=%s" % (env_name, source, key_mode, exc.code, hint, detail), flush=True)
+            print("provider_auth_probe environment=%s key_source=%s key_mode=%s status=%s detail=%s" % (env_name, source, key_mode, exc.code, detail), flush=True)
         except Exception as exc:
+            item["status"] = "network_error"
             print("provider_auth_probe environment=%s key_source=%s result=network_error type=%s" % (env_name, source, type(exc).__name__), flush=True)
-
+        results.append(item)
+    _SHOTSTACK_AUTH_STATUS = {"checked_at": int(time.time()), "environments": results}
+    return _SHOTSTACK_AUTH_STATUS
 
 class Handler(BaseHTTPRequestHandler):
     def send_json(self, status, payload):
@@ -400,6 +412,17 @@ class Handler(BaseHTTPRequestHandler):
               "queue_counts":queue_counts, "failure_categories":failure_categories, "diagnostics_ok":diagnostics_ok,
               "bootstrap_test_render":test_render,
               "note":"Health does not prove provider validity, video QC, or publication."
+            })
+            return
+        if path == "/provider-auth-status" and self.command == "GET":
+            # Cached startup probe only: this endpoint never triggers external requests
+            # and exposes no keys, raw provider bodies, or secret variable values.
+            snapshot = _SHOTSTACK_AUTH_STATUS
+            self.send_json(200, {
+                "service": "ia10-renderer-bridge",
+                "checked_at": snapshot.get("checked_at"),
+                "environments": snapshot.get("environments", []),
+                "note": "Read-only cached credential check; refreshed when the service starts."
             })
             return
         if path in ("/queue-summary", "/queue-diagnostics") and self.command == "GET":
