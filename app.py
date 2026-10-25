@@ -629,6 +629,44 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(data)
             return
+        if path == "/ops/diagnostics":
+            # Authenticated, read-only operations snapshot. Never returns secrets,
+            # titles, media URLs, raw errors, or row contents.
+            if not self.authorized():
+                return self.send_json(401, {"error":"unauthorized"})
+            con = None
+            try:
+                con = connect_db()
+                now = int(time.time())
+                state_rows = execute(con, "SELECT state, COUNT(*) AS count FROM jobs GROUP BY state").fetchall()
+                states = {str(row["state"]): int(row["count"]) for row in state_rows}
+                queued_due = execute(con, "SELECT COUNT(*) AS count FROM jobs WHERE state='QUEUED' AND COALESCE(retry_after,0) <= %s", (now,)).fetchone()
+                stale_cutoff = now - max(180, int(os.environ.get("IA10_STALE_PROCESSING_SECONDS", "180")))
+                stale = execute(con, "SELECT COUNT(*) AS count FROM jobs WHERE state='PROCESSING' AND updated_at < %s", (stale_cutoff,)).fetchone()
+                con.close()
+                con = None
+                auth = _SHOTSTACK_AUTH_STATUS if isinstance(_SHOTSTACK_AUTH_STATUS, dict) else {}
+                safe_env = []
+                for item in auth.get("environments", []):
+                    safe_env.append({"environment": item.get("environment"), "configured": bool(item.get("configured")),
+                                     "status": item.get("status"), "http_status": item.get("http_status")})
+                return self.send_json(200, {
+                    "read_only": True, "published": False, "database": "postgres" if DATABASE_URL else "sqlite",
+                    "states": states, "queued_due": int(queued_due["count"] or 0) if queued_due else 0,
+                    "stale_processing": int(stale["count"] or 0) if stale else 0,
+                    "credentials": {"bridge_token_configured": bool(os.environ.get("IA10_BRIDGE_TOKEN")),
+                                    "review_token_configured": bool(os.environ.get("IA10_REVIEW_TOKEN")),
+                                    "shotstack": safe_env},
+                    "policy": {"automatic_publish": False, "editorial_approval_required": True,
+                               "secret_values_returned": False, "jobs_mutated": False}
+                })
+            except Exception as exc:
+                if con is not None:
+                    try: con.close()
+                    except Exception: pass
+                print("ops_diagnostics_error type=%s" % type(exc).__name__, flush=True)
+                return self.send_json(503, {"error":"ops_diagnostics_unavailable"})
+
         if path == "/jobs/review-queue":
             # Authenticated, read-only pagination for human editorial review.
             # Never approves, mutates, or publishes jobs.
