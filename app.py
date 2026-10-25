@@ -640,9 +640,17 @@ class Handler(BaseHTTPRequestHandler):
                 now = int(time.time())
                 state_rows = execute(con, "SELECT state, COUNT(*) AS count FROM jobs GROUP BY state").fetchall()
                 states = {str(row["state"]): int(row["count"]) for row in state_rows}
-                queued_due = execute(con, "SELECT COUNT(*) AS count FROM jobs WHERE state='QUEUED' AND COALESCE(retry_after,0) <= %s", (now,)).fetchone()
+                # Legacy DB schemas may not contain retry_after; diagnostics must
+                # remain useful without failing the entire read-only endpoint.
+                try:
+                    queued_due = execute(con, "SELECT COUNT(*) AS count FROM jobs WHERE state='QUEUED' AND COALESCE(retry_after,0) <= %s", (now,)).fetchone()
+                except Exception:
+                    queued_due = execute(con, "SELECT COUNT(*) AS count FROM jobs WHERE state='QUEUED'").fetchone()
                 stale_cutoff = now - max(180, int(os.environ.get("IA10_STALE_PROCESSING_SECONDS", "180")))
-                stale = execute(con, "SELECT COUNT(*) AS count FROM jobs WHERE state='PROCESSING' AND updated_at < %s", (stale_cutoff,)).fetchone()
+                try:
+                    stale = execute(con, "SELECT COUNT(*) AS count FROM jobs WHERE state='PROCESSING' AND updated_at < %s", (stale_cutoff,)).fetchone()
+                except Exception:
+                    stale = {"count": 0}
                 con.close()
                 con = None
                 auth = _SHOTSTACK_AUTH_STATUS if isinstance(_SHOTSTACK_AUTH_STATUS, dict) else {}
