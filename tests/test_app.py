@@ -54,6 +54,36 @@ class BridgeHTTPTests(unittest.TestCase):
             self.assertEqual(response.status, 204)
             self.assertIsNone(response.headers.get("Access-Control-Allow-Origin"))
 
+    def test_control_center_cors_preflight_allows_authorization_header(self):
+        request = urllib.request.Request(
+            self.base + "/jobs/review-queue?limit=5&offset=0",
+            headers={
+                "Origin": "https://ia30-centro-control.onrender.com",
+                "Access-Control-Request-Method": "GET",
+                "Access-Control-Request-Headers": "authorization",
+            },
+            method="OPTIONS",
+        )
+        with urllib.request.urlopen(request, timeout=3) as response:
+            self.assertEqual(response.status, 204)
+            self.assertEqual(response.headers.get("Access-Control-Allow-Origin"), "https://ia30-centro-control.onrender.com")
+            self.assertIn("Authorization", response.headers.get("Access-Control-Allow-Headers", ""))
+            self.assertEqual(response.headers.get("Access-Control-Allow-Methods"), "GET, OPTIONS")
+
+    def test_untrusted_origin_does_not_receive_cors_permission(self):
+        request = urllib.request.Request(
+            self.base + "/jobs/review-queue?limit=5&offset=0",
+            headers={
+                "Origin": "https://untrusted.example",
+                "Access-Control-Request-Method": "GET",
+                "Access-Control-Request-Headers": "authorization",
+            },
+            method="OPTIONS",
+        )
+        with urllib.request.urlopen(request, timeout=3) as response:
+            self.assertEqual(response.status, 204)
+            self.assertIsNone(response.headers.get("Access-Control-Allow-Origin"))
+
     def test_health_does_not_require_secrets(self):
         with patch.dict(os.environ, {}, clear=True):
             with urllib.request.urlopen(self.base + "/health", timeout=3) as response:
