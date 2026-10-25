@@ -1426,6 +1426,37 @@ def rss_intake_worker():
             print("rss_ingest_worker_error type=%s" % type(exc).__name__, flush=True)
         time.sleep(interval)
 
+
+def review_auth_selfcheck_worker():
+    """Periodically test the read-only editorial endpoint without exposing credentials or job data."""
+    interval = max(300, int(os.environ.get("IA10_REVIEW_SELFCHECK_INTERVAL_SECONDS", "300")))
+    while True:
+        try:
+            token = os.environ.get("IA10_REVIEW_TOKEN", "")
+            if not token:
+                print("review_auth_selfcheck status=not_configured", flush=True)
+            else:
+                req = urllib.request.Request(
+                    "http://127.0.0.1:%s/jobs/review-queue?limit=1&offset=0" % PORT,
+                    headers={"Authorization": "Bearer " + token, "Accept": "application/json"},
+                    method="GET")
+                try:
+                    with urllib.request.urlopen(req, timeout=10) as response:
+                        payload = json.loads(response.read(65536).decode("utf-8", "replace"))
+                        if response.status == 200 and isinstance(payload, dict) and isinstance(payload.get("jobs"), list):
+                            print("review_auth_selfcheck status=ok http_status=200 pending_total=%s sample_count=%s read_only=%s" % (
+                                int(payload.get("total", 0)), len(payload["jobs"]), bool(payload.get("read_only"))), flush=True)
+                        else:
+                            print("review_auth_selfcheck status=unexpected_response http_status=%s" % response.status, flush=True)
+                except urllib.error.HTTPError as exc:
+                    print("review_auth_selfcheck status=http_error http_status=%s" % int(exc.code), flush=True)
+                except Exception as exc:
+                    print("review_auth_selfcheck status=error error_type=%s" % type(exc).__name__, flush=True)
+        except Exception as exc:
+            print("review_auth_selfcheck status=error error_type=%s" % type(exc).__name__, flush=True)
+        time.sleep(interval)
+
+
 def background_queue_worker():
     """Poll the guarded queue while this free web service is awake."""
     interval = max(15, int(os.environ.get("IA10_WORKER_INTERVAL_SECONDS", "30")))
@@ -1490,5 +1521,6 @@ if __name__ == "__main__":
     bootstrap_test_render_once()
     local_renderer_smoke_test_once()
     threading.Thread(target=background_queue_worker, name="ia10-queue-worker", daemon=True).start()
+    threading.Thread(target=review_auth_selfcheck_worker, name="ia10-review-auth-selfcheck", daemon=True).start()
     threading.Thread(target=rss_intake_worker, name="ia10-rss-intake", daemon=True).start()
     ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()
