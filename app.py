@@ -274,6 +274,10 @@ def _shotstack_safe_error_detail(exc):
     except Exception:
         return "provider_error_body_unreadable"
 
+def _safe_public_error_summary(value):
+    """Never expose raw job/provider/database errors through the public health response."""
+    return "details_redacted" if str(value or "").strip() else None
+
 def submit_render(edit):
     # Only exact official Shotstack Sandbox/Production bases may select credentials.
     base = _shotstack_normalize_base(os.environ.get("SHOTSTACK_API_BASE", "https://api.shotstack.io/edit/stage"))
@@ -339,13 +343,23 @@ class Handler(BaseHTTPRequestHandler):
         # Read-only browser dashboard may consume only the public health and queue-summary
         # endpoints. No credentials, job titles, raw errors, or media URLs are exposed there.
         origin = self.headers.get("Origin", "")
-        if origin == "https://ia30-centro-control.onrender.com":
+        if origin in ("https://ia30-centro-control.onrender.com", "https://ia40-centro-autonomo.onrender.com"):
             self.send_header("Access-Control-Allow-Origin", origin)
             self.send_header("Vary", "Origin")
             self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
             self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type")
         self.end_headers()
         self.wfile.write(data)
+
+    def handle_error(self, request, client_address):
+        # A browser tab closing or timing out can interrupt a response; do not
+        # emit a full traceback for routine client disconnects.
+        import sys
+        exc_type = sys.exc_info()[0]
+        if exc_type in (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            print("http_client_disconnected", flush=True)
+            return
+        super().handle_error(request, client_address)
 
     def authorized(self):
         token = os.environ.get("IA10_BRIDGE_TOKEN", "")
@@ -360,7 +374,7 @@ class Handler(BaseHTTPRequestHandler):
         # CORS preflight is restricted to the known control-center origin.
         origin = self.headers.get("Origin", "")
         self.send_response(204)
-        if origin == "https://ia30-centro-control.onrender.com":
+        if origin in ("https://ia30-centro-control.onrender.com", "https://ia40-centro-autonomo.onrender.com"):
             self.send_header("Access-Control-Allow-Origin", origin)
             self.send_header("Vary", "Origin")
             self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
@@ -415,7 +429,7 @@ class Handler(BaseHTTPRequestHandler):
                               ("IA10_BOOTSTRAP_TEST_RENDER%",)).fetchone()
                 if row:
                     test_render = {"state": str(row["state"]), "render_url_available": bool(row["render_url"]),
-                                   "error": str(row["error"] or "")[:180] or None}
+                                   "error": _safe_public_error_summary(row["error"])}
                 diagnostics_ok = True
             except Exception as exc:
                 # Keep connectivity and diagnostic-query health distinct.
@@ -424,8 +438,7 @@ class Handler(BaseHTTPRequestHandler):
                                    "error": "diagnostic_query_failed"}
                 else:
                     test_render["error"] = "database_connection_failed"
-                safe_db_message = getattr(getattr(exc, "diag", None), "message_primary", None) or str(exc).splitlines()[0][:180]
-                print("health_diagnostics_failed stage=%s type=%s detail=%s" % (diagnostic_stage, type(exc).__name__, safe_db_message.replace("\\n", " ")), flush=True)
+                print("health_diagnostics_failed stage=%s type=%s detail=redacted" % (diagnostic_stage, type(exc).__name__), flush=True)
             finally:
                 if con is not None:
                     try:
