@@ -333,7 +333,7 @@ class Handler(BaseHTTPRequestHandler):
         # Read-only browser dashboard may consume only the public health and queue-summary
         # endpoints. No credentials, job titles, raw errors, or media URLs are exposed there.
         origin = self.headers.get("Origin", "")
-        if origin == "https://ia30-centro-control.onrender.com":
+        if origin in ("https://ia30-centro-control.onrender.com", "https://ia40-centro-autonomo.onrender.com"):
             self.send_header("Access-Control-Allow-Origin", origin)
             self.send_header("Vary", "Origin")
             self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
