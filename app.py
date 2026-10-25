@@ -1551,15 +1551,29 @@ def background_queue_worker():
         except Exception as exc:
             print("queue_worker_error type=%s" % type(exc).__name__, flush=True)
 
-if __name__ == "__main__":
-    connect_db().close()
-    check_shotstack_credentials()
-    recover_interrupted_bootstrap_jobs()
-    recover_stale_processing_jobs()
-    bootstrap_test_render_once()
-    local_renderer_smoke_test_once()
-    server = ThreadingHTTPServer((HOST, PORT), Handler)
+def startup_checks_and_workers():
+    # Bind the web port before slow DB/provider/render checks so Render's
+    # health scanner sees the service as available during initialization.
+    checks = (
+        ("database_connect", lambda: connect_db().close()),
+        ("provider_credentials", check_shotstack_credentials),
+        ("bootstrap_recovery", recover_interrupted_bootstrap_jobs),
+        ("stale_job_recovery", recover_stale_processing_jobs),
+        ("bootstrap_test_render", bootstrap_test_render_once),
+        ("local_renderer_smoke_test", local_renderer_smoke_test_once),
+    )
+    for name, check in checks:
+        try:
+            check()
+            print("startup_check name=%s status=ok" % name, flush=True)
+        except Exception as exc:
+            print("startup_check name=%s status=error error_type=%s action=continue" %
+                  (name, type(exc).__name__), flush=True)
     threading.Thread(target=background_queue_worker, name="ia10-queue-worker", daemon=True).start()
     threading.Thread(target=review_auth_selfcheck_worker, name="ia10-review-auth-selfcheck", daemon=True).start()
     threading.Thread(target=rss_intake_worker, name="ia10-rss-intake", daemon=True).start()
+
+if __name__ == "__main__":
+    server = ThreadingHTTPServer((HOST, PORT), Handler)
+    threading.Thread(target=startup_checks_and_workers, name="ia10-startup-checks", daemon=True).start()
     server.serve_forever()
