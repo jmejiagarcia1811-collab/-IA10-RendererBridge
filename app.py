@@ -337,13 +337,31 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Access-Control-Allow-Origin", origin)
             self.send_header("Vary", "Origin")
             self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
-            self.send_header("Access-Control-Allow-Headers", "Content-Type")
+            self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type")
         self.end_headers()
         self.wfile.write(data)
 
     def authorized(self):
         token = os.environ.get("IA10_BRIDGE_TOKEN", "")
         return bool(token) and self.headers.get("Authorization", "") == "Bearer " + token
+
+    def authorized_review(self):
+        # A separate read-only credential prevents exposing the bridge's broader token.
+        token = os.environ.get("IA10_REVIEW_TOKEN", "")
+        return bool(token) and self.headers.get("Authorization", "") == "Bearer " + token
+
+    def do_OPTIONS(self):
+        # CORS preflight is restricted to the known control-center origin.
+        origin = self.headers.get("Origin", "")
+        self.send_response(204)
+        if origin == "https://ia30-centro-control.onrender.com":
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Vary", "Origin")
+            self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type")
+            self.send_header("Access-Control-Max-Age", "300")
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
 
     def do_GET(self):
         path = self.path.split("?", 1)[0]
@@ -614,7 +632,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/jobs/review-queue":
             # Authenticated, read-only pagination for human editorial review.
             # Never approves, mutates, or publishes jobs.
-            if not self.authorized():
+            if not self.authorized_review():
                 return self.send_json(401, {"error":"unauthorized"})
             try:
                 from urllib.parse import parse_qs

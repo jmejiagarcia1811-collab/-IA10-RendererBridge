@@ -24,6 +24,66 @@ class BridgeHTTPTests(unittest.TestCase):
         cls.server.server_close()
         cls.thread.join(timeout=2)
 
+    def test_review_queue_cors_preflight_allows_authorization_only_for_control_center(self):
+        request = urllib.request.Request(
+            self.base + "/jobs/review-queue?limit=5&offset=0",
+            headers={
+                "Origin": "https://ia30-centro-control.onrender.com",
+                "Access-Control-Request-Method": "GET",
+                "Access-Control-Request-Headers": "authorization",
+            },
+            method="OPTIONS",
+        )
+        with urllib.request.urlopen(request, timeout=3) as response:
+            self.assertEqual(response.status, 204)
+            self.assertEqual(response.headers.get("Access-Control-Allow-Origin"), "https://ia30-centro-control.onrender.com")
+            self.assertIn("Authorization", response.headers.get("Access-Control-Allow-Headers", ""))
+            self.assertEqual(response.headers.get("Access-Control-Allow-Methods"), "GET, OPTIONS")
+
+    def test_review_queue_cors_does_not_allow_untrusted_origin(self):
+        request = urllib.request.Request(
+            self.base + "/jobs/review-queue?limit=5&offset=0",
+            headers={
+                "Origin": "https://untrusted.example",
+                "Access-Control-Request-Method": "GET",
+                "Access-Control-Request-Headers": "authorization",
+            },
+            method="OPTIONS",
+        )
+        with urllib.request.urlopen(request, timeout=3) as response:
+            self.assertEqual(response.status, 204)
+            self.assertIsNone(response.headers.get("Access-Control-Allow-Origin"))
+
+    def test_control_center_cors_preflight_allows_authorization_header(self):
+        request = urllib.request.Request(
+            self.base + "/jobs/review-queue?limit=5&offset=0",
+            headers={
+                "Origin": "https://ia30-centro-control.onrender.com",
+                "Access-Control-Request-Method": "GET",
+                "Access-Control-Request-Headers": "authorization",
+            },
+            method="OPTIONS",
+        )
+        with urllib.request.urlopen(request, timeout=3) as response:
+            self.assertEqual(response.status, 204)
+            self.assertEqual(response.headers.get("Access-Control-Allow-Origin"), "https://ia30-centro-control.onrender.com")
+            self.assertIn("Authorization", response.headers.get("Access-Control-Allow-Headers", ""))
+            self.assertEqual(response.headers.get("Access-Control-Allow-Methods"), "GET, OPTIONS")
+
+    def test_untrusted_origin_does_not_receive_cors_permission(self):
+        request = urllib.request.Request(
+            self.base + "/jobs/review-queue?limit=5&offset=0",
+            headers={
+                "Origin": "https://untrusted.example",
+                "Access-Control-Request-Method": "GET",
+                "Access-Control-Request-Headers": "authorization",
+            },
+            method="OPTIONS",
+        )
+        with urllib.request.urlopen(request, timeout=3) as response:
+            self.assertEqual(response.status, 204)
+            self.assertIsNone(response.headers.get("Access-Control-Allow-Origin"))
+
     def test_health_does_not_require_secrets(self):
         with patch.dict(os.environ, {}, clear=True):
             with urllib.request.urlopen(self.base + "/health", timeout=3) as response:
@@ -115,7 +175,7 @@ class BridgeHTTPTests(unittest.TestCase):
 
 
     def test_review_queue_requires_bearer_token(self):
-        with patch.dict(os.environ, {"IA10_BRIDGE_TOKEN":"test-only-token"}, clear=True), patch.object(app, "connect_db") as connect:
+        with patch.dict(os.environ, {"IA10_REVIEW_TOKEN":"test-only-token"}, clear=True), patch.object(app, "connect_db") as connect:
             with self.assertRaises(urllib.error.HTTPError) as caught:
                 urllib.request.urlopen(self.base + "/jobs/review-queue", timeout=3)
         self.assertEqual(caught.exception.code, 401)
@@ -126,7 +186,7 @@ class BridgeHTTPTests(unittest.TestCase):
             self.base + "/jobs/review-queue?limit=11&offset=0",
             headers={"Authorization":"Bearer test-only-token"},
         )
-        with patch.dict(os.environ, {"IA10_BRIDGE_TOKEN":"test-only-token"}, clear=True), patch.object(app, "connect_db") as connect:
+        with patch.dict(os.environ, {"IA10_REVIEW_TOKEN":"test-only-token"}, clear=True), patch.object(app, "connect_db") as connect:
             with self.assertRaises(urllib.error.HTTPError) as caught:
                 urllib.request.urlopen(request, timeout=3)
         self.assertEqual(caught.exception.code, 400)
@@ -155,7 +215,7 @@ class BridgeHTTPTests(unittest.TestCase):
             self.base + "/jobs/review-queue?limit=5&offset=0",
             headers={"Authorization":"Bearer test-only-token"},
         )
-        with patch.dict(os.environ, {"IA10_BRIDGE_TOKEN":"test-only-token"}, clear=True), patch.object(
+        with patch.dict(os.environ, {"IA10_REVIEW_TOKEN":"test-only-token"}, clear=True), patch.object(
             app, "connect_db", return_value=FakeConnection()
         ), patch.object(app, "execute", side_effect=fake_execute):
             with urllib.request.urlopen(request, timeout=3) as response:
@@ -197,7 +257,7 @@ class BridgeHTTPTests(unittest.TestCase):
             self.base + "/jobs/review-queue?limit=2&offset=2",
             headers={"Authorization":"Bearer test-only-token"},
         )
-        with patch.dict(os.environ, {"IA10_BRIDGE_TOKEN":"test-only-token"}, clear=True), patch.object(
+        with patch.dict(os.environ, {"IA10_REVIEW_TOKEN":"test-only-token"}, clear=True), patch.object(
             app, "connect_db", return_value=FakeConnection()
         ), patch.object(app, "execute", side_effect=fake_execute):
             with urllib.request.urlopen(request, timeout=3) as response:
@@ -210,6 +270,17 @@ class BridgeHTTPTests(unittest.TestCase):
         self.assertEqual(body["jobs"][0]["edit"], {"headline":"Titular de prueba"})
         self.assertTrue(body["read_only"])
         self.assertFalse(body["published"])
+
+    def test_review_queue_rejects_general_bridge_token(self):
+        request = urllib.request.Request(
+            self.base + "/jobs/review-queue?limit=5&offset=0",
+            headers={"Authorization":"Bearer bridge-token"},
+        )
+        with patch.dict(os.environ, {"IA10_BRIDGE_TOKEN":"bridge-token"}, clear=True), patch.object(app, "connect_db") as connect:
+            with self.assertRaises(urllib.error.HTTPError) as caught:
+                urllib.request.urlopen(request, timeout=3)
+        self.assertEqual(caught.exception.code, 401)
+        connect.assert_not_called()
 
 
 if __name__ == "__main__":

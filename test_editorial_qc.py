@@ -61,9 +61,11 @@ class EditorialQCEndpointTests(unittest.TestCase):
         self.old_db_path = app.DB_PATH
         self.old_database_url = app.DATABASE_URL
         self.old_token = os.environ.get("IA10_BRIDGE_TOKEN")
+        self.old_review_token = os.environ.get("IA10_REVIEW_TOKEN")
         app.DB_PATH = str(Path(self.tempdir.name) / "test.sqlite3")
         app.DATABASE_URL = ""
         os.environ["IA10_BRIDGE_TOKEN"] = "unit-test-token"
+        os.environ["IA10_REVIEW_TOKEN"] = "unit-test-token"
         con = app.connect_db()
         now = 1000
         rows = [
@@ -89,6 +91,10 @@ class EditorialQCEndpointTests(unittest.TestCase):
             os.environ.pop("IA10_BRIDGE_TOKEN", None)
         else:
             os.environ["IA10_BRIDGE_TOKEN"] = self.old_token
+        if self.old_review_token is None:
+            os.environ.pop("IA10_REVIEW_TOKEN", None)
+        else:
+            os.environ["IA10_REVIEW_TOKEN"] = self.old_review_token
         self.tempdir.cleanup()
 
     def post_qc(self, job_id, payload, token="unit-test-token"):
