@@ -1429,7 +1429,7 @@ def rss_intake_worker():
 
 def review_auth_selfcheck_worker():
     """Periodically test the read-only editorial endpoint without exposing credentials or job data."""
-    interval = max(300, int(os.environ.get("IA10_REVIEW_SELFCHECK_INTERVAL_SECONDS", "300")))
+    interval = max(60, int(os.environ.get("IA10_REVIEW_SELFCHECK_INTERVAL_SECONDS", "60")))
     while True:
         try:
             token = os.environ.get("IA10_REVIEW_TOKEN", "")
@@ -1520,7 +1520,8 @@ if __name__ == "__main__":
     recover_stale_processing_jobs()
     bootstrap_test_render_once()
     local_renderer_smoke_test_once()
+    server = ThreadingHTTPServer((HOST, PORT), Handler)
     threading.Thread(target=background_queue_worker, name="ia10-queue-worker", daemon=True).start()
     threading.Thread(target=review_auth_selfcheck_worker, name="ia10-review-auth-selfcheck", daemon=True).start()
     threading.Thread(target=rss_intake_worker, name="ia10-rss-intake", daemon=True).start()
-    ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()
+    server.serve_forever()
