@@ -345,6 +345,11 @@ class Handler(BaseHTTPRequestHandler):
         token = os.environ.get("IA10_BRIDGE_TOKEN", "")
         return bool(token) and self.headers.get("Authorization", "") == "Bearer " + token
 
+    def authorized_review(self):
+        # A separate read-only credential prevents exposing the bridge's broader token.
+        token = os.environ.get("IA10_REVIEW_TOKEN", "")
+        return bool(token) and self.headers.get("Authorization", "") == "Bearer " + token
+
     def do_OPTIONS(self):
         # CORS preflight is restricted to the known control-center origin.
         origin = self.headers.get("Origin", "")
@@ -627,7 +632,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/jobs/review-queue":
             # Authenticated, read-only pagination for human editorial review.
             # Never approves, mutates, or publishes jobs.
-            if not self.authorized():
+            if not self.authorized_review():
                 return self.send_json(401, {"error":"unauthorized"})
             try:
                 from urllib.parse import parse_qs
