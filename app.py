@@ -614,6 +614,8 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/jobs/review-queue":
             # Authenticated, read-only pagination for human editorial review.
             # Never approves, mutates, or publishes jobs.
+            if not self.authorized():
+                return self.send_json(401, {"error":"unauthorized"})
             try:
                 from urllib.parse import parse_qs
                 query = parse_qs(self.path.split("?", 1)[1] if "?" in self.path else "")
