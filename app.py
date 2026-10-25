@@ -341,6 +341,16 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def handle_error(self, request, client_address):
+        # A browser tab closing or timing out can interrupt a response; do not
+        # emit a full traceback for routine client disconnects.
+        import sys
+        exc_type = sys.exc_info()[0]
+        if exc_type in (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            print("http_client_disconnected", flush=True)
+            return
+        super().handle_error(request, client_address)
+
     def authorized(self):
         token = os.environ.get("IA10_BRIDGE_TOKEN", "")
         return bool(token) and self.headers.get("Authorization", "") == "Bearer " + token
@@ -354,7 +364,7 @@ class Handler(BaseHTTPRequestHandler):
         # CORS preflight is restricted to the known control-center origin.
         origin = self.headers.get("Origin", "")
         self.send_response(204)
-        if origin == "https://ia30-centro-control.onrender.com":
+        if origin in ("https://ia30-centro-control.onrender.com", "https://ia40-centro-autonomo.onrender.com"):
             self.send_header("Access-Control-Allow-Origin", origin)
             self.send_header("Vary", "Origin")
             self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
