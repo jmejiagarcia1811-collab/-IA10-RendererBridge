@@ -55,6 +55,18 @@ class EditorialQCTests(unittest.TestCase):
         self.assertFalse(validate_editorial_qc("publish", {key: True for key in EDITORIAL_QC_CHECKS}))
 
 
+class PublicDiagnosticRedactionTests(unittest.TestCase):
+    def test_public_error_summary_redacts_sensitive_details(self):
+        raw_detail = "provider error token=synthetic-test-secret private-url=https://example.invalid/private"
+        summary = app._safe_public_error_summary(raw_detail)
+        self.assertEqual(summary, "details_redacted")
+        self.assertNotIn("synthetic-test-secret", summary)
+        self.assertNotIn("example.invalid", summary)
+
+    def test_empty_public_error_summary_is_none(self):
+        self.assertIsNone(app._safe_public_error_summary(""))
+
+
 class EditorialQCEndpointTests(unittest.TestCase):
     def setUp(self):
         self.tempdir = tempfile.TemporaryDirectory()
@@ -96,6 +108,14 @@ class EditorialQCEndpointTests(unittest.TestCase):
         else:
             os.environ["IA10_REVIEW_TOKEN"] = self.old_review_token
         self.tempdir.cleanup()
+
+    def test_options_allows_ia40_control_center_origin(self):
+        origin = "https://ia40-centro-autonomo.onrender.com"
+        request = urllib.request.Request(self.base_url + "/health", headers={"Origin": origin}, method="OPTIONS")
+        with urllib.request.urlopen(request, timeout=3) as response:
+            self.assertEqual(response.status, 204)
+            self.assertEqual(response.headers.get("Access-Control-Allow-Origin"), origin)
+            self.assertEqual(response.headers.get("Access-Control-Allow-Methods"), "GET, OPTIONS")
 
     def post_qc(self, job_id, payload, token="unit-test-token"):
         request = urllib.request.Request(
