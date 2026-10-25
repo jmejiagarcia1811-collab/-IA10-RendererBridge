@@ -611,6 +611,46 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(data)
             return
+        if path == "/jobs/review-queue":
+            # Authenticated, read-only pagination for human editorial review.
+            # Never approves, mutates, or publishes jobs.
+            try:
+                from urllib.parse import parse_qs
+                query = parse_qs(self.path.split("?", 1)[1] if "?" in self.path else "")
+                try:
+                    limit = int(query.get("limit", ["5"])[0])
+                    offset = int(query.get("offset", ["0"])[0])
+                except (TypeError, ValueError):
+                    return self.send_json(400, {"error":"invalid_pagination"})
+                if limit < 1 or limit > 10 or offset < 0 or offset > 10000:
+                    return self.send_json(400, {"error":"pagination_out_of_range","limit_max":10,"offset_max":10000})
+                con = connect_db()
+                total_row = execute(con, "SELECT COUNT(*) AS count FROM jobs WHERE state='QC_PENDING_REVIEW'").fetchone()
+                rows = execute(con, """SELECT id,title,state,created_at,updated_at,provider_id,render_url,error,edit_json
+                    FROM jobs WHERE state='QC_PENDING_REVIEW' ORDER BY id ASC LIMIT %s OFFSET %s""",
+                    (limit, offset)).fetchall()
+                con.close()
+                jobs = []
+                for row in rows:
+                    item = dict(row)
+                    raw_edit = item.pop("edit_json", None)
+                    try:
+                        item["edit"] = json.loads(raw_edit) if raw_edit else None
+                    except (TypeError, ValueError):
+                        item["edit"] = None
+                        item["edit_parse_error"] = True
+                    jobs.append(item)
+                total = int(total_row["count"] or 0) if total_row else 0
+                return self.send_json(200, {
+                    "jobs":jobs,"total":total,"limit":limit,"offset":offset,
+                    "next_offset":offset + len(jobs) if offset + len(jobs) < total else None,
+                    "read_only":True,"published":False,
+                    "note":"Human editorial review required. This endpoint never approves or publishes jobs."
+                })
+            except Exception as exc:
+                print("editorial_review_queue_error type=%s" % type(exc).__name__, flush=True)
+                return self.send_json(503, {"error":"editorial_review_queue_unavailable"})
+
         if path == "/jobs" or path.startswith("/jobs/"):
             if not self.authorized():
                 return self.send_json(401, {"error":"unauthorized"})
