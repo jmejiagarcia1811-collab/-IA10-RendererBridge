@@ -114,5 +114,103 @@ class BridgeHTTPTests(unittest.TestCase):
             self.assertEqual(body, valid_payload)
 
 
+    def test_review_queue_requires_bearer_token(self):
+        with patch.dict(os.environ, {"IA10_BRIDGE_TOKEN":"test-only-token"}, clear=True), patch.object(app, "connect_db") as connect:
+            with self.assertRaises(urllib.error.HTTPError) as caught:
+                urllib.request.urlopen(self.base + "/jobs/review-queue", timeout=3)
+        self.assertEqual(caught.exception.code, 401)
+        connect.assert_not_called()
+
+    def test_review_queue_rejects_out_of_range_pagination(self):
+        request = urllib.request.Request(
+            self.base + "/jobs/review-queue?limit=11&offset=0",
+            headers={"Authorization":"Bearer test-only-token"},
+        )
+        with patch.dict(os.environ, {"IA10_BRIDGE_TOKEN":"test-only-token"}, clear=True), patch.object(app, "connect_db") as connect:
+            with self.assertRaises(urllib.error.HTTPError) as caught:
+                urllib.request.urlopen(request, timeout=3)
+        self.assertEqual(caught.exception.code, 400)
+        connect.assert_not_called()
+
+    def test_review_queue_returns_empty_queue_without_mutation(self):
+        class FakeConnection:
+            def close(self):
+                pass
+
+        class FakeResult:
+            def __init__(self, row=None, rows=None):
+                self.row = row
+                self.rows = rows or []
+            def fetchone(self):
+                return self.row
+            def fetchall(self):
+                return self.rows
+
+        def fake_execute(_con, sql, params=None):
+            if "COUNT(*)" in sql:
+                return FakeResult(row={"count":0})
+            return FakeResult(rows=[])
+
+        request = urllib.request.Request(
+            self.base + "/jobs/review-queue?limit=5&offset=0",
+            headers={"Authorization":"Bearer test-only-token"},
+        )
+        with patch.dict(os.environ, {"IA10_BRIDGE_TOKEN":"test-only-token"}, clear=True), patch.object(
+            app, "connect_db", return_value=FakeConnection()
+        ), patch.object(app, "execute", side_effect=fake_execute):
+            with urllib.request.urlopen(request, timeout=3) as response:
+                body = json.loads(response.read())
+                self.assertEqual(response.status, 200)
+        self.assertEqual(body["jobs"], [])
+        self.assertEqual(body["total"], 0)
+        self.assertIsNone(body["next_offset"])
+        self.assertTrue(body["read_only"])
+        self.assertFalse(body["published"])
+
+    def test_review_queue_paginates_pending_editorial_jobs(self):
+        class FakeConnection:
+            def close(self):
+                pass
+
+        class FakeResult:
+            def __init__(self, row=None, rows=None):
+                self.row = row
+                self.rows = rows or []
+            def fetchone(self):
+                return self.row
+            def fetchall(self):
+                return self.rows
+
+        job = {
+            "id": 42, "title":"Vídeo pendiente", "state":"QC_PENDING_REVIEW",
+            "created_at":"2026-10-25", "updated_at":"2026-10-25",
+            "provider_id":"local-test", "render_url":"https://example.invalid/video.mp4",
+            "error":None, "edit_json":json.dumps({"headline":"Titular de prueba"}),
+        }
+        def fake_execute(_con, sql, params=None):
+            if "COUNT(*)" in sql:
+                return FakeResult(row={"count":3})
+            self.assertEqual(params, (2, 2))
+            return FakeResult(rows=[job])
+
+        request = urllib.request.Request(
+            self.base + "/jobs/review-queue?limit=2&offset=2",
+            headers={"Authorization":"Bearer test-only-token"},
+        )
+        with patch.dict(os.environ, {"IA10_BRIDGE_TOKEN":"test-only-token"}, clear=True), patch.object(
+            app, "connect_db", return_value=FakeConnection()
+        ), patch.object(app, "execute", side_effect=fake_execute):
+            with urllib.request.urlopen(request, timeout=3) as response:
+                body = json.loads(response.read())
+                self.assertEqual(response.status, 200)
+        self.assertEqual(body["total"], 3)
+        self.assertEqual(body["offset"], 2)
+        self.assertIsNone(body["next_offset"])
+        self.assertEqual(body["jobs"][0]["id"], 42)
+        self.assertEqual(body["jobs"][0]["edit"], {"headline":"Titular de prueba"})
+        self.assertTrue(body["read_only"])
+        self.assertFalse(body["published"])
+
+
 if __name__ == "__main__":
     unittest.main()

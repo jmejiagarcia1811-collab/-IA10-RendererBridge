@@ -163,6 +163,58 @@ class EditorialQCEndpointTests(unittest.TestCase):
         self.assertIn("decoded_portrait_1080x1920", row["error"])
 
 
+    def get_review_queue(self, query="", token="unit-test-token"):
+        request = urllib.request.Request(
+            self.base_url + "/jobs/review-queue" + query,
+            headers={"Authorization": "Bearer " + token},
+        )
+        try:
+            response = urllib.request.urlopen(request, timeout=3)
+        except urllib.error.HTTPError as exc:
+            return exc.code, json.loads(exc.read().decode("utf-8"))
+        with response:
+            return response.status, json.loads(response.read().decode("utf-8"))
+
+    def test_review_queue_rejects_unauthorized_access(self):
+        status, body = self.get_review_queue(token="wrong")
+        self.assertEqual(status, 401)
+        self.assertEqual(body["error"], "unauthorized")
+
+    def test_review_queue_rejects_invalid_pagination(self):
+        for query in ("?limit=0", "?limit=11", "?offset=-1", "?offset=10001", "?limit=bad"):
+            with self.subTest(query=query):
+                status, body = self.get_review_queue(query)
+                self.assertEqual(status, 400)
+        self.assertEqual(self.get_job_state(1)["state"], "QC_PENDING_REVIEW")
+
+    def test_review_queue_paginates_without_approving_or_publishing(self):
+        status, body = self.get_review_queue("?limit=1&offset=1")
+        self.assertEqual(status, 200)
+        self.assertEqual(body["total"], 2)
+        self.assertEqual(body["limit"], 1)
+        self.assertEqual(body["offset"], 1)
+        self.assertEqual(len(body["jobs"]), 1)
+        self.assertIsNotNone(body["jobs"][0]["edit"])
+        self.assertTrue(body["read_only"])
+        self.assertFalse(body["published"])
+        self.assertEqual(self.get_job_state(1)["state"], "QC_PENDING_REVIEW")
+        self.assertEqual(self.get_job_state(2)["state"], "QC_PENDING_REVIEW")
+
+    def test_review_queue_handles_empty_queue(self):
+        con = app.connect_db()
+        app.execute(con, "DELETE FROM jobs")
+        con.commit()
+        con.close()
+        status, body = self.get_review_queue("?limit=5&offset=0")
+        self.assertEqual(status, 200)
+        self.assertEqual(body["jobs"], [])
+        self.assertEqual(body["total"], 0)
+        self.assertIsNone(body["next_offset"])
+        self.assertTrue(body["read_only"])
+        self.assertFalse(body["published"])
+
+
+
 class BoundedRetryPolicyTests(unittest.TestCase):
     def test_provider_403_is_not_retryable(self):
         exc = urllib.error.HTTPError("https://provider.invalid", 403, "forbidden", {}, None)
