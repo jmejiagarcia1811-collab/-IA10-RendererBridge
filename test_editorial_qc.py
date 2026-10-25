@@ -32,9 +32,9 @@ class ShotstackKeySelectionTests(unittest.TestCase):
         }, clear=True):
             self.assertEqual(app._shotstack_key_for_base("https://api.shotstack.io/edit/v1"), "production-only")
 
-    def test_stage_can_fall_back_to_legacy_but_production_fails_closed(self):
+    def test_stage_and_production_fail_closed_without_environment_specific_keys(self):
         with patch.dict(os.environ, {"SHOTSTACK_API_KEY": "legacy"}, clear=True):
-            self.assertEqual(app._shotstack_key_for_base("https://api.shotstack.io/edit/stage"), "legacy")
+            self.assertEqual(app._shotstack_key_for_base("https://api.shotstack.io/edit/stage"), "")
             self.assertEqual(app._shotstack_key_for_base("https://api.shotstack.io/edit/v1"), "")
 
 class EditorialQCTests(unittest.TestCase):

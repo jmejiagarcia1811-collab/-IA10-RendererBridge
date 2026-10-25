@@ -226,24 +226,32 @@ def _shotstack_normalize_base(base):
 
 
 def _shotstack_key_source_for_base(base):
-    """Return only the variable name selected; never return or log a secret."""
+    """Fail closed unless the URL is an exact official Shotstack stage/production endpoint."""
     normalized = _shotstack_normalize_base(base)
-    if normalized.endswith("/stage"):
-        if os.environ.get("SHOTSTACK_STAGE_API_KEY", "").strip():
-            return "SHOTSTACK_STAGE_API_KEY"
-        if os.environ.get("SHOTSTACK_API_KEY", "").strip():
-            return "SHOTSTACK_API_KEY"
+    try:
+        from urllib.parse import urlsplit
+        parsed = urlsplit(normalized)
+    except Exception:
         return "missing"
-    if normalized.endswith("/v1"):
-        # Never send a stage/legacy key to the production endpoint.
+    # Never send provider credentials to HTTP, unknown hosts, custom paths, or URLs
+    # with query/fragment components. The base is server configuration, not user input.
+    if (parsed.scheme != "https" or parsed.netloc.lower() != "api.shotstack.io"
+            or parsed.query or parsed.fragment):
+        return "missing"
+    path = parsed.path.rstrip("/")
+    if path == "/edit/stage":
+        return ("SHOTSTACK_STAGE_API_KEY"
+                if os.environ.get("SHOTSTACK_STAGE_API_KEY", "").strip()
+                else "missing")
+    if path == "/edit/v1":
         return ("SHOTSTACK_PRODUCTION_API_KEY"
                 if os.environ.get("SHOTSTACK_PRODUCTION_API_KEY", "").strip()
                 else "missing")
-    return "SHOTSTACK_API_KEY" if os.environ.get("SHOTSTACK_API_KEY", "").strip() else "missing"
+    return "missing"
 
 
 def _shotstack_key_for_base(base):
-    """Select the environment-specific key; keep legacy single-key compatibility."""
+    """Select only the credential for a recognized official Shotstack endpoint."""
     source = _shotstack_key_source_for_base(base)
     return os.environ.get(source, "").strip() if source != "missing" else ""
 
@@ -268,8 +276,7 @@ def _shotstack_safe_error_detail(exc):
         return "provider_error_body_unreadable"
 
 def submit_render(edit):
-    # Shotstack uses distinct Sandbox and Production API keys. Prefer the matching
-    # environment-specific key, while retaining compatibility with SHOTSTACK_API_KEY.
+    # Only exact official Shotstack Sandbox/Production bases may select credentials.
     base = _shotstack_normalize_base(os.environ.get("SHOTSTACK_API_BASE", "https://api.shotstack.io/edit/stage"))
     key = _shotstack_key_for_base(base)
     if not key:
