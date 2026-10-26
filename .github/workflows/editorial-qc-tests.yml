@@ -20,6 +20,8 @@ jobs:
       - name: Install runtime dependencies
         run: pip install -r requirements.txt
       - name: Compile Python modules
-        run: python -m py_compile app.py test_editorial_qc.py
+        run: python -m py_compile app.py test_editorial_qc.py tests/test_shotstack_credential_isolation.py
       - name: Run editorial QC tests
         run: python -m unittest -v test_editorial_qc
+      - name: Run Shotstack credential isolation tests
+        run: python -m unittest -v tests.test_shotstack_credential_isolation
