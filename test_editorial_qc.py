@@ -32,10 +32,70 @@ class ShotstackKeySelectionTests(unittest.TestCase):
         }, clear=True):
             self.assertEqual(app._shotstack_key_for_base("https://api.shotstack.io/edit/v1"), "production-only")
 
-    def test_stage_can_fall_back_to_legacy_but_production_fails_closed(self):
+    def test_stage_and_production_fail_closed_without_environment_specific_keys(self):
         with patch.dict(os.environ, {"SHOTSTACK_API_KEY": "legacy"}, clear=True):
-            self.assertEqual(app._shotstack_key_for_base("https://api.shotstack.io/edit/stage"), "legacy")
+            self.assertEqual(app._shotstack_key_for_base("https://api.shotstack.io/edit/stage"), "")
             self.assertEqual(app._shotstack_key_for_base("https://api.shotstack.io/edit/v1"), "")
+
+class ShotstackCredentialIsolationTests(unittest.TestCase):
+    def test_stage_does_not_fall_back_to_generic_key(self):
+        with patch.dict(os.environ, {"SHOTSTACK_API_KEY": "legacy"}, clear=True):
+            self.assertEqual(app._shotstack_key_source_for_base("https://api.shotstack.io/edit/stage"), "missing")
+            self.assertEqual(app._shotstack_key_for_base("https://api.shotstack.io/edit/stage"), "")
+
+    def test_stage_uses_only_stage_key(self):
+        with patch.dict(os.environ, {
+            "SHOTSTACK_API_KEY": "legacy",
+            "SHOTSTACK_STAGE_API_KEY": "stage-only",
+        }, clear=True):
+            self.assertEqual(app._shotstack_key_source_for_base("https://api.shotstack.io/edit/stage"), "SHOTSTACK_STAGE_API_KEY")
+            self.assertEqual(app._shotstack_key_for_base("https://api.shotstack.io/edit/stage"), "stage-only")
+
+    def test_production_does_not_fall_back_to_generic_or_stage_key(self):
+        with patch.dict(os.environ, {
+            "SHOTSTACK_API_KEY": "legacy",
+            "SHOTSTACK_STAGE_API_KEY": "stage-only",
+        }, clear=True):
+            self.assertEqual(app._shotstack_key_source_for_base("https://api.shotstack.io/edit/v1"), "missing")
+            self.assertEqual(app._shotstack_key_for_base("https://api.shotstack.io/edit/v1"), "")
+
+    def test_production_uses_only_production_key(self):
+        with patch.dict(os.environ, {
+            "SHOTSTACK_STAGE_API_KEY": "stage-only",
+            "SHOTSTACK_PRODUCTION_API_KEY": "production-only",
+        }, clear=True):
+            self.assertEqual(app._shotstack_key_source_for_base("https://api.shotstack.io/edit/v1"), "SHOTSTACK_PRODUCTION_API_KEY")
+            self.assertEqual(app._shotstack_key_for_base("https://api.shotstack.io/edit/v1"), "production-only")
+
+    def test_stage_render_endpoint_suffix_normalizes_to_stage_base(self):
+        with patch.dict(os.environ, {"SHOTSTACK_STAGE_API_KEY": "stage-only"}, clear=True):
+            self.assertEqual(app._shotstack_key_source_for_base("https://api.shotstack.io/edit/stage/render"), "SHOTSTACK_STAGE_API_KEY")
+
+    def test_untrusted_bases_never_receive_generic_key(self):
+        with patch.dict(os.environ, {"SHOTSTACK_API_KEY": "legacy"}, clear=True):
+            for base in (
+                "https://attacker.example/edit/stage",
+                "https://api.shotstack.io.evil.example/edit/stage",
+                "http://api.shotstack.io/edit/stage",
+                "https://api.shotstack.io/edit/custom",
+                "https://api.shotstack.io/edit/stage?redirect=https://attacker.example",
+                "https://api.shotstack.io:443/edit/stage",
+                "https://api.shotstack.io/edit/stage#fragment",
+            ):
+                with self.subTest(base=base):
+                    self.assertEqual(app._shotstack_key_source_for_base(base), "missing")
+                    self.assertEqual(app._shotstack_key_for_base(base), "")
+
+    def test_public_error_summary_redacts_raw_details(self):
+        raw = "provider error token=synthetic-test-secret private-url=https://example.invalid/private"
+        summary = app._safe_public_error_summary(raw)
+        self.assertEqual(summary, "details_redacted")
+        self.assertNotIn("synthetic-test-secret", summary)
+        self.assertNotIn("example.invalid", summary)
+
+    def test_public_error_summary_empty_value_is_none(self):
+        self.assertIsNone(app._safe_public_error_summary(""))
+
 
 class EditorialQCTests(unittest.TestCase):
     def test_approval_requires_every_check_true(self):
