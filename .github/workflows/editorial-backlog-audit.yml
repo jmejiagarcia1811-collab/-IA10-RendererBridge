@@ -91,3 +91,5 @@ jobs:
               sys.exit("AUDIT_INCOMPLETE: pagination count mismatch; no mutation attempted.")
           print("PASS: authenticated read-only backlog audit complete; human review is still required.")
           PY
+
+# Manual diagnostic rerun requested 2026-10-26; behavior unchanged.
