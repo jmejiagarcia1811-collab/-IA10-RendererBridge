@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - "feature/guarded-editorial-qc"
+      - "feat/oidc-readonly-editorial-audit"
   pull_request:
     branches:
       - main
