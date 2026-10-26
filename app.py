@@ -8,6 +8,7 @@ from platform_core import validate_local_render_request
 from rss_ingest import ingest_rss_once
 from agent_executor import execute_order
 from supervisor_agent import run_supervisor
+from github_oidc_auth import verify_editorial_audit_token
 
 HOST = "0.0.0.0"
 PORT = int(os.environ.get("PORT", "10000"))
@@ -357,9 +358,16 @@ class Handler(BaseHTTPRequestHandler):
         return bool(token) and self.headers.get("Authorization", "") == "Bearer " + token
 
     def authorized_review(self):
-        # A separate read-only credential prevents exposing the bridge's broader token.
+        # Prefer short-lived OIDC scoped to the exact audit workflow. Keep the
+        # independent static review token as a backward-compatible fallback.
+        authorization = self.headers.get("Authorization", "")
+        if not authorization.startswith("Bearer "):
+            return False
+        credential = authorization[7:]
+        if verify_editorial_audit_token(credential):
+            return True
         token = os.environ.get("IA10_REVIEW_TOKEN", "")
-        return bool(token) and self.headers.get("Authorization", "") == "Bearer " + token
+        return bool(token) and credential == token
 
     def do_OPTIONS(self):
         # CORS preflight is restricted to the known control-center origin.
