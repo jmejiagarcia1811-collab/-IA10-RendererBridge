@@ -32,13 +32,19 @@ def verify_editorial_audit_token(token):
             leeway=10,
             options={"require": ["exp", "iat", "iss", "aud", "repository", "ref", "workflow_ref", "event_name"]},
         )
-        return (
-            claims.get("repository") == REPOSITORY
-            and claims.get("ref") == REF
-            and claims.get("workflow_ref") == WORKFLOW_REF
-            and claims.get("event_name") in ALLOWED_EVENTS
-            and claims.get("sub") == "repo:" + REPOSITORY + ":ref:" + REF
-        )
-    except Exception:
-        # Fail closed; never log tokens, claims, or validation exceptions.
+        checks = {
+            "repository": claims.get("repository") == REPOSITORY,
+            "ref": claims.get("ref") == REF,
+            "workflow_ref": claims.get("workflow_ref") == WORKFLOW_REF,
+            "event_name": claims.get("event_name") in ALLOWED_EVENTS,
+            "sub": claims.get("sub") == "repo:" + REPOSITORY + ":ref:" + REF,
+        }
+        failed = [name for name, passed in checks.items() if not passed]
+        if failed:
+            print("oidc_review_auth_rejected reason=claim_mismatch claims=" + ",".join(failed), flush=True)
+            return False
+        return True
+    except Exception as exc:
+        # Fail closed; log only exception class, never tokens, claims, or messages.
+        print("oidc_review_auth_rejected reason=validation_error type=" + type(exc).__name__, flush=True)
         return False
