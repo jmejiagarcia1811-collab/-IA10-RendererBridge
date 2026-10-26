@@ -1,0 +1,27 @@
+name: IA40 dashboard logic tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "ia40/**"
+      - "tests/test_ia40_dashboard.cjs"
+      - ".github/workflows/ia40-dashboard-tests.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "ia40/**"
+      - "tests/test_ia40_dashboard.cjs"
+      - ".github/workflows/ia40-dashboard-tests.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  dashboard-logic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test live queue count mapping with mocked read-only endpoints
+        run: node tests/test_ia40_dashboard.cjs
