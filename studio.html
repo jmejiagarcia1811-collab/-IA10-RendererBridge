@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>IA10 Studio</title>
+<style>
+:root{color-scheme:dark;--bg:#0b1020;--panel:#151d30;--line:#2b3853;--text:#f4f7ff;--muted:#aab7cf;--accent:#7dd3fc;--ok:#86efac;--warn:#fcd34d}
+*{box-sizing:border-box}body{margin:0;background:linear-gradient(150deg,#0b1020,#101a2d);color:var(--text);font:16px system-ui,sans-serif}main{max-width:850px;margin:auto;padding:22px 16px 48px}h1{font-size:clamp(1.6rem,5vw,2.3rem);margin:8px 0}p{line-height:1.5;color:var(--muted)}.tag{display:inline-block;border:1px solid var(--line);border-radius:99px;padding:5px 10px;font-size:.8rem;color:var(--accent)}section{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px;margin:14px 0}label{display:block;font-weight:650;margin:14px 0 6px}input,textarea{width:100%;border:1px solid #42516e;border-radius:10px;background:#0b1222;color:var(--text);padding:12px;font:inherit}textarea{min-height:110px;resize:vertical}button{background:var(--accent);border:0;border-radius:10px;padding:12px 16px;font:inherit;font-weight:750;color:#06121b;cursor:pointer;margin-top:14px}button:disabled{opacity:.55;cursor:wait}#status{white-space:pre-wrap;overflow-wrap:anywhere;background:#0b1222;border-radius:10px;padding:12px;margin-top:12px;color:var(--ok)}.warning{color:var(--warn)}a{color:var(--accent)}.row{display:grid;grid-template-columns:1fr;gap:8px}@media(min-width:600px){.row{grid-template-columns:1fr 1fr}}
+</style></head><body><main>
+<header><span class="tag">IA10 · GENERADOR PROPIO</span><h1>IA10 Studio</h1><p>Crea un vídeo vertical narrado desde un titular, un guion y una fuente. Se añade a la cola para generar; nunca se publica automáticamente.</p></header>
+<section><h2>Acceso seguro</h2><p>El token solo permanece en esta página mientras esté abierta. No se guarda en el navegador ni se muestra.</p><label for="token">Token de control</label><input id="token" type="password" autocomplete="off" placeholder="Token de control IA10"></section>
+<section><h2>Crear vídeo</h2><label for="headline">Titular (máx. 110 caracteres)</label><input id="headline" maxlength="110" placeholder="Titular claro y verificable">
+<label for="script">Guion de voz en español (mínimo 8 palabras)</label><textarea id="script" maxlength="1800" placeholder="Resume los hechos sin añadir datos no verificados."></textarea>
+<label for="source">Fuente / enlace HTTPS</label><input id="source" maxlength="500" type="url" placeholder="https://…">
+<label for="title">Nombre interno del trabajo</label><input id="title" maxlength="200" placeholder="Se puede dejar vacío para usar el titular">
+<button id="create">Crear y poner en cola</button><div id="status" role="status">Preparado. No se crea nada hasta pulsar el botón.</div></section>
+<section><h2>Alcance y seguridad</h2><p>Genera una tarjeta visual narrada, vertical 1080 × 1920, MP4 de hasta 15 segundos. No es metraje real ni verifica por sí sola la veracidad editorial.</p><p class="warning">La revisión editorial sigue siendo obligatoria. No se publica nada automáticamente.</p><p><a href="/ops-console">Consola de revisión editorial</a> · <a href="/health">Estado del servicio</a></p></section>
+</main><script>
+const $=id=>document.getElementById(id),status=$("status");
+$("create").addEventListener("click",async()=>{
+const token=$("token").value.trim(),headline=$("headline").value.trim(),script=$("script").value.trim(),source=$("source").value.trim(),title=$("title").value.trim()||headline;
+if(!token){status.textContent="Falta el token de control.";return}
+if(!headline||script.split(/\s+/).filter(Boolean).length<8){status.textContent="Añade un titular y un guion de al menos 8 palabras.";return}
+if(source&&!/^https:\/\//i.test(source)){status.textContent="La fuente debe usar un enlace HTTPS.";return}
+const btn=$("create");btn.disabled=true;status.textContent="Enviando trabajo a la cola…";
+try{const response=await fetch("/jobs",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+token},body:JSON.stringify({title,local_render:{headline,script,source}}),cache:"no-store"});
+const data=await response.json().catch(()=>({error:"respuesta_no_json"}));
+if(!response.ok)throw new Error(data.error||("HTTP "+response.status));
+status.textContent="Trabajo #"+data.id+" creado · estado "+data.state+".\nLa generación se ejecutará en segundo plano. Comprueba el resultado en la consola editorial. No se ha publicado.";
+}catch(e){status.textContent="No se pudo confirmar la creación: "+String(e.message||e)+"."}finally{btn.disabled=false}
+});
+</script></body></html>
