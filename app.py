@@ -4,6 +4,7 @@ import json, mimetypes, os, shutil, sqlite3, subprocess, tempfile, threading, ti
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from local_renderer import render_local_content
+from platform_core import validate_local_render_request
 from rss_ingest import ingest_rss_once
 from agent_executor import execute_order
 from supervisor_agent import run_supervisor
@@ -869,12 +870,12 @@ class Handler(BaseHTTPRequestHandler):
             if not isinstance(title, str) or not title.strip():
                 return self.send_json(400, {"error":"title_required"})
             if isinstance(local_render, dict):
-                headline = local_render.get("headline")
-                script = local_render.get("script")
-                source = local_render.get("source", "")
-                if not isinstance(headline, str) or not headline.strip() or not isinstance(script, str) or len(script.split()) < 8 or not isinstance(source, str):
-                    return self.send_json(400, {"error":"local_render_requires_headline_script_8_words_and_optional_source"})
-                edit = {"local_render":{"headline":headline[:110],"script":script[:1800],"source":source[:500]}}
+                try:
+                    local_request = validate_local_render_request({"title":title, "local_render":local_render})
+                except ValueError as exc:
+                    return self.send_json(400, {"error":str(exc)})
+                title = local_request.title
+                edit = {"local_render":{"headline":local_request.headline,"script":local_request.script,"source":local_request.source}}
             elif isinstance(edit, dict) and isinstance(edit.get("timeline"), dict) and isinstance(edit.get("output"), dict):
                 pass
             else:
