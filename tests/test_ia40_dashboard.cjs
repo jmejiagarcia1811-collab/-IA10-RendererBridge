@@ -18,6 +18,7 @@ function getElement(id) {
       onclick: null,
       dataset: {},
       classList: { toggle() {} },
+      addEventListener() {},
       click() {},
       reset() {},
     });
