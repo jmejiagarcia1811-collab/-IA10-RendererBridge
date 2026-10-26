@@ -19,6 +19,14 @@ def _jwks_client():
 def verify_editorial_audit_token(token):
     """Return True only for a valid, short-lived token from the exact audit workflow."""
     if not isinstance(token, str) or not token or len(token) > 16384:
+        print("oidc_review_auth_rejected reason=invalid_token_container", flush=True)
+        return False
+    # GitHub Actions OIDC tokens are compact JWTs (three dot-separated parts).
+    # Log only the segment count so malformed bearer values can be diagnosed
+    # without ever logging token content or weakening signature/claim checks.
+    segments = token.split(".")
+    if len(segments) != 3 or any(not part for part in segments):
+        print("oidc_review_auth_rejected reason=malformed_jwt segment_count=" + str(len(segments)), flush=True)
         return False
     try:
         import jwt
