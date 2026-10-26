@@ -375,6 +375,23 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         path = self.path.split("?", 1)[0]
+        if path == "/ops-console":
+            # Same-origin operator console. It never embeds provider credentials.
+            try:
+                page = Path(__file__).with_name("ops_console.html").read_bytes()
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(page)))
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("X-Content-Type-Options", "nosniff")
+                self.send_header("Referrer-Policy", "no-referrer")
+                self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
+                self.end_headers()
+                self.wfile.write(page)
+            except Exception as exc:
+                print("ops_console_unavailable type=%s" % type(exc).__name__, flush=True)
+                return self.send_json(503, {"error":"ops_console_unavailable"})
+            return
         if path in ("/health", "/"):
             db_mode = "postgres" if DATABASE_URL else "sqlite-local-ephemeral"
             db_ok = False
