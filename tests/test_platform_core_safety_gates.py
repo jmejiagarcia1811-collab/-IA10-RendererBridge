@@ -1,6 +1,6 @@
 """Regression tests for request validation and the fail-closed publication gate.
 
-Run with: python -m unittest discover -s tests -v
+Run with: python -m unittest tests.test_platform_core_safety_gates -v
 """
 import unittest
 
@@ -37,7 +37,7 @@ class LocalRenderRequestTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "minimum_8_words"):
             validate_local_render_request({
                 "title": "Titular",
-                "local_render": {"headline": "Titular claro", "script": "Solo siete palabras en este texto de prueba"},
+                "local_render": {"headline": "Titular claro", "script": "Solo seis palabras en este texto"},
             })
 
 
