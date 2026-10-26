@@ -4,6 +4,7 @@ import json, mimetypes, os, shutil, sqlite3, subprocess, tempfile, threading, ti
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from local_renderer import render_local_content
+from platform_core import validate_local_render_request
 from rss_ingest import ingest_rss_once
 from agent_executor import execute_order
 from supervisor_agent import run_supervisor
@@ -375,6 +376,24 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         path = self.path.split("?", 1)[0]
+        if path in ("/ops-console", "/studio"):
+            # Same-origin operator pages; credentials are never embedded in source.
+            try:
+                page_name = "studio.html" if path == "/studio" else "ops_console.html"
+                page = Path(__file__).with_name(page_name).read_bytes()
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(page)))
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("X-Content-Type-Options", "nosniff")
+                self.send_header("Referrer-Policy", "no-referrer")
+                self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
+                self.end_headers()
+                self.wfile.write(page)
+            except Exception as exc:
+                print("ops_console_unavailable type=%s" % type(exc).__name__, flush=True)
+                return self.send_json(503, {"error":"ops_console_unavailable"})
+            return
         if path in ("/health", "/"):
             db_mode = "postgres" if DATABASE_URL else "sqlite-local-ephemeral"
             db_ok = False
@@ -703,8 +722,8 @@ class Handler(BaseHTTPRequestHandler):
                 con = connect_db()
                 total_row = execute(con, "SELECT COUNT(*) AS count FROM jobs WHERE state='QC_PENDING_REVIEW'").fetchone()
                 rows = execute(con, """SELECT id,title,state,created_at,updated_at,provider_id,render_url,error,edit_json
-                    FROM jobs WHERE state='QC_PENDING_REVIEW' ORDER BY id ASC LIMIT %s OFFSET %s""",
-                    (limit, offset)).fetchall()
+                    FROM jobs WHERE state='QC_PENDING_REVIEW' ORDER BY CASE WHEN provider_id IS NOT NULL AND render_url LIKE %s AND title NOT LIKE %s AND title NOT LIKE %s THEN 0 ELSE 1 END, id ASC LIMIT %s OFFSET %s""",
+                    ("https://%", "IA10_BOOTSTRAP_TEST_RENDER%", "IA10_LOCAL_RENDER_SMOKE_TEST%", limit, offset)).fetchall()
                 con.close()
                 jobs = []
                 for row in rows:
@@ -844,10 +863,23 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(status, result)
 
         if path in ("/jobs", "/render"):
-            # /render is the documented compatibility endpoint; both routes enqueue safely.
-            title, edit = body.get("title", "API_RENDER_REQUEST"), body.get("edit")
-            if not isinstance(title, str) or not title.strip() or not isinstance(edit, dict) or not isinstance(edit.get("timeline"), dict) or not isinstance(edit.get("output"), dict):
-                return self.send_json(400, {"error":"title_and_shotstack_edit_required"})
+            # Queue either a local narrated-card job or a legacy provider edit. No publishing here.
+            title = body.get("title", "API_RENDER_REQUEST")
+            edit = body.get("edit")
+            local_render = body.get("local_render")
+            if not isinstance(title, str) or not title.strip():
+                return self.send_json(400, {"error":"title_required"})
+            if isinstance(local_render, dict):
+                try:
+                    local_request = validate_local_render_request({"title":title, "local_render":local_render})
+                except ValueError as exc:
+                    return self.send_json(400, {"error":str(exc)})
+                title = local_request.title
+                edit = {"local_render":{"headline":local_request.headline,"script":local_request.script,"source":local_request.source}}
+            elif isinstance(edit, dict) and isinstance(edit.get("timeline"), dict) and isinstance(edit.get("output"), dict):
+                pass
+            else:
+                return self.send_json(400, {"error":"local_render_or_shotstack_edit_required"})
             now = int(time.time())
             try:
                 con = connect_db()
