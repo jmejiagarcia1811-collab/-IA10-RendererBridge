@@ -1047,14 +1047,23 @@ class Handler(BaseHTTPRequestHandler):
                 con.commit(); con.close()
                 print("queue_job_rejected reason=invalid_job_edit_json", flush=True)
                 return self.send_json(422, {"processed":True,"id":job["id"],"state":"FAILED","error":"invalid_job_edit_json"})
-            if not isinstance(edit_payload, dict) or not isinstance(edit_payload.get("timeline"), dict) or not isinstance(edit_payload.get("output"), dict):
+            local_spec = edit_payload.get("local_render") if isinstance(edit_payload, dict) else None
+            # Local-render jobs are stored as {"local_render": {...}} by POST /render.
+            # They intentionally do not need a Shotstack timeline/output object.
+            # Legacy provider jobs must still satisfy the original Shotstack schema.
+            is_local_render_job = isinstance(local_spec, dict)
+            is_shotstack_edit = (
+                isinstance(edit_payload, dict)
+                and isinstance(edit_payload.get("timeline"), dict)
+                and isinstance(edit_payload.get("output"), dict)
+            )
+            if not is_local_render_job and not is_shotstack_edit:
                 con = connect_db()
                 execute(con, "UPDATE jobs SET state='FAILED',error=%s,updated_at=%s WHERE id=%s AND state='PROCESSING'",
                         ("invalid_job_edit_schema", int(time.time()), job["id"]))
                 con.commit(); con.close()
                 print("queue_job_rejected reason=invalid_job_edit_schema", flush=True)
                 return self.send_json(422, {"processed":True,"id":job["id"],"state":"FAILED","error":"invalid_job_edit_schema"})
-            local_spec = edit_payload.get("local_render") if isinstance(edit_payload, dict) else None
             local_enabled = os.environ.get("IA10_LOCAL_RENDER_ENABLED", "").strip().lower() in ("1", "true", "yes")
             if local_enabled and isinstance(local_spec, dict) and not str(job["title"]).startswith("IA10_BOOTSTRAP_TEST_RENDER"):
                 try:
