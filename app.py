@@ -375,10 +375,11 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         path = self.path.split("?", 1)[0]
-        if path == "/ops-console":
-            # Same-origin operator console. It never embeds provider credentials.
+        if path in ("/ops-console", "/studio"):
+            # Same-origin operator pages; credentials are never embedded in source.
             try:
-                page = Path(__file__).with_name("ops_console.html").read_bytes()
+                page_name = "studio.html" if path == "/studio" else "ops_console.html"
+                page = Path(__file__).with_name(page_name).read_bytes()
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.send_header("Content-Length", str(len(page)))
@@ -861,10 +862,23 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(status, result)
 
         if path in ("/jobs", "/render"):
-            # /render is the documented compatibility endpoint; both routes enqueue safely.
-            title, edit = body.get("title", "API_RENDER_REQUEST"), body.get("edit")
-            if not isinstance(title, str) or not title.strip() or not isinstance(edit, dict) or not isinstance(edit.get("timeline"), dict) or not isinstance(edit.get("output"), dict):
-                return self.send_json(400, {"error":"title_and_shotstack_edit_required"})
+            # Queue either a local narrated-card job or a legacy provider edit. No publishing here.
+            title = body.get("title", "API_RENDER_REQUEST")
+            edit = body.get("edit")
+            local_render = body.get("local_render")
+            if not isinstance(title, str) or not title.strip():
+                return self.send_json(400, {"error":"title_required"})
+            if isinstance(local_render, dict):
+                headline = local_render.get("headline")
+                script = local_render.get("script")
+                source = local_render.get("source", "")
+                if not isinstance(headline, str) or not headline.strip() or not isinstance(script, str) or len(script.split()) < 8 or not isinstance(source, str):
+                    return self.send_json(400, {"error":"local_render_requires_headline_script_8_words_and_optional_source"})
+                edit = {"local_render":{"headline":headline[:110],"script":script[:1800],"source":source[:500]}}
+            elif isinstance(edit, dict) and isinstance(edit.get("timeline"), dict) and isinstance(edit.get("output"), dict):
+                pass
+            else:
+                return self.send_json(400, {"error":"local_render_or_shotstack_edit_required"})
             now = int(time.time())
             try:
                 con = connect_db()
