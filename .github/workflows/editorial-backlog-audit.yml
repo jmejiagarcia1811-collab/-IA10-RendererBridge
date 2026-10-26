@@ -10,35 +10,50 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   audit:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
+      - name: Obtain short-lived GitHub OIDC token
+        id: oidc
+        run: |
+          python - <<'PY'
+          import json, os, urllib.parse, urllib.request
+          endpoint = os.environ["ACTIONS_ID_TOKEN_REQUEST_URL"]
+          token = os.environ["ACTIONS_ID_TOKEN_REQUEST_TOKEN"]
+          url = endpoint + ("&" if "?" in endpoint else "?") + urllib.parse.urlencode({"audience": "ia10-renderer-bridge-editorial-audit"})
+          req = urllib.request.Request(url, headers={"Authorization": "Bearer " + token, "Accept": "application/json"})
+          with urllib.request.urlopen(req, timeout=15) as response:
+              payload = json.loads(response.read().decode("utf-8"))
+          value = payload.get("value", "")
+          if not value or len(value) > 16384 or any(c in value for c in "\r\n"):
+              raise SystemExit("OIDC_TOKEN_REQUEST_FAILED: invalid token response")
+          print("::add-mask::" + value, flush=True)
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write("token=" + value + "\n")
+          PY
       - name: Read-only authenticated editorial queue audit
         env:
-          REVIEW_TOKEN: ${{ secrets.IA10_REVIEW_TOKEN }}
+          OIDC_TOKEN: ${{ steps.oidc.outputs.token }}
           REVIEW_URL: https://ia10-renderer-bridge.onrender.com/jobs/review-queue
         run: |
           python - <<'PY'
-          import datetime, json, os, sys, urllib.error, urllib.parse, urllib.request
-          token = os.environ.get("REVIEW_TOKEN", "")
+          import json, os, sys, urllib.parse, urllib.request
+          token = os.environ.get("OIDC_TOKEN", "")
           if not token:
-              sys.exit("AUDIT_NOT_CONFIGURED: repository secret IA10_REVIEW_TOKEN is missing; no queue mutation attempted.")
+              sys.exit("AUDIT_NOT_CONFIGURED: GitHub OIDC token unavailable; no queue mutation attempted.")
           base = os.environ["REVIEW_URL"]
-          limit = 10
-          offset = 0
-          total = None
-          counts = {}
-          samples = []
-          pages = 0
+          limit, offset, total, pages = 10, 0, None, 0
+          counts, samples = {}, []
           while pages < 100:
               url = base + "?" + urllib.parse.urlencode({"limit": limit, "offset": offset})
               req = urllib.request.Request(url, headers={"Authorization": "Bearer " + token, "Accept": "application/json", "Cache-Control": "no-cache"})
               with urllib.request.urlopen(req, timeout=25) as response:
                   if response.status != 200:
-                      sys.exit(f"AUDIT_FAILED: review endpoint HTTP {response.status}")
+                      sys.exit("AUDIT_FAILED: review endpoint returned non-200")
                   payload = json.loads(response.read().decode("utf-8"))
               if payload.get("read_only") is not True or payload.get("published") is not False:
                   sys.exit("AUDIT_FAILED: endpoint safety contract missing; no mutation attempted.")
@@ -51,13 +66,9 @@ jobs:
                   state = str(job.get("state", "UNKNOWN"))
                   counts[state] = counts.get(state, 0) + 1
                   title = str(job.get("title", ""))
-                  # Only aggregate classifications; never print title, edit payload, URLs, credentials or full errors.
-                  if title.startswith("IA10_LOCAL_RENDER_SMOKE_TEST"):
-                      category = "local_smoke_test"
-                  elif title.startswith("IA10_BOOTSTRAP_TEST_RENDER"):
-                      category = "bootstrap_test"
-                  else:
-                      category = "content_or_other"
+                  category = ("local_smoke_test" if title.startswith("IA10_LOCAL_RENDER_SMOKE_TEST")
+                              else "bootstrap_test" if title.startswith("IA10_BOOTSTRAP_TEST_RENDER")
+                              else "content_or_other")
                   samples.append({"id": str(job.get("id", ""))[:80], "category": category,
                                   "created_at": str(job.get("created_at", ""))[:40],
                                   "updated_at": str(job.get("updated_at", ""))[:40],
@@ -77,6 +88,6 @@ jobs:
                                for key in ("local_smoke_test", "bootstrap_test", "content_or_other")},
                 "sample_metadata": samples[:10], "published": False, "mutated": False}, sort_keys=True))
           if total != len(samples):
-              sys.exit(f"AUDIT_INCOMPLETE: endpoint reports {total} pending jobs but {len(samples)} were paginated; no mutation attempted.")
+              sys.exit("AUDIT_INCOMPLETE: pagination count mismatch; no mutation attempted.")
           print("PASS: authenticated read-only backlog audit complete; human review is still required.")
           PY
