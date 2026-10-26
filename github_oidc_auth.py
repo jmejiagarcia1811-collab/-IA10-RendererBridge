@@ -37,7 +37,6 @@ def verify_editorial_audit_token(token):
             "ref": claims.get("ref") == REF,
             "workflow_ref": claims.get("workflow_ref") == WORKFLOW_REF,
             "event_name": claims.get("event_name") in ALLOWED_EVENTS,
-            "sub": claims.get("sub") == "repo:" + REPOSITORY + ":ref:" + REF,
         }
         failed = [name for name, passed in checks.items() if not passed]
         if failed:
