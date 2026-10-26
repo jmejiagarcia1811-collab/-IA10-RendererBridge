@@ -21,3 +21,5 @@ class OidcAuthorizationTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+# CI trigger: exercise fail-closed OIDC tests on the open pull request.
