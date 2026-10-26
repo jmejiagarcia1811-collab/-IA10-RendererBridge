@@ -720,8 +720,8 @@ class Handler(BaseHTTPRequestHandler):
                 con = connect_db()
                 total_row = execute(con, "SELECT COUNT(*) AS count FROM jobs WHERE state='QC_PENDING_REVIEW'").fetchone()
                 rows = execute(con, """SELECT id,title,state,created_at,updated_at,provider_id,render_url,error,edit_json
-                    FROM jobs WHERE state='QC_PENDING_REVIEW' ORDER BY CASE WHEN provider_id IS NOT NULL AND render_url LIKE 'https://%' AND title NOT LIKE 'IA10_BOOTSTRAP_TEST_RENDER%' AND title NOT LIKE 'IA10_LOCAL_RENDER_SMOKE_TEST%' THEN 0 ELSE 1 END, id ASC LIMIT %s OFFSET %s""",
-                    (limit, offset)).fetchall()
+                    FROM jobs WHERE state='QC_PENDING_REVIEW' ORDER BY CASE WHEN provider_id IS NOT NULL AND render_url LIKE %s AND title NOT LIKE %s AND title NOT LIKE %s THEN 0 ELSE 1 END, id ASC LIMIT %s OFFSET %s""",
+                    ("https://%", "IA10_BOOTSTRAP_TEST_RENDER%", "IA10_LOCAL_RENDER_SMOKE_TEST%", limit, offset)).fetchall()
                 con.close()
                 jobs = []
                 for row in rows:
