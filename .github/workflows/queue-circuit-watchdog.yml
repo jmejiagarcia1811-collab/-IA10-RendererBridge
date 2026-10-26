@@ -1,6 +1,9 @@
 name: IA10 Queue Circuit Watchdog
 
 on:
+  push:
+    branches: [main]
+    paths: [".github/workflows/queue-circuit-watchdog.yml"]
   workflow_dispatch:
   schedule:
     - cron: "23 * * * *"
