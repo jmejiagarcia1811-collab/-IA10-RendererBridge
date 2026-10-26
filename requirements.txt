@@ -2,3 +2,4 @@ psycopg[binary]>=3.2,<4
 Pillow>=10.0,<13
 imageio-ffmpeg>=0.5.1,<1
 edge-tts>=7.0.0,<8
+PyJWT[crypto]>=2.9,<3
