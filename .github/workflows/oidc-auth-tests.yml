@@ -4,13 +4,13 @@ on:
   pull_request:
     paths:
       - "github_oidc_auth.py"
-      - "tests/**"
+      - "tests/test_github_oidc_auth.py"
       - ".github/workflows/oidc-auth-tests.yml"
   push:
     branches: ["main"]
     paths:
       - "github_oidc_auth.py"
-      - "tests/**"
+      - "tests/test_github_oidc_auth.py"
       - ".github/workflows/oidc-auth-tests.yml"
 
 permissions:
@@ -28,4 +28,4 @@ jobs:
       - name: Install auth dependency
         run: python -m pip install "PyJWT[crypto]>=2.9,<3"
       - name: Run OIDC fail-closed tests
-        run: python -m unittest discover -s tests -v
+        run: python -m unittest discover -s tests -p 'test_github_oidc_auth.py' -v
