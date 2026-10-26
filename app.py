@@ -477,6 +477,71 @@ class Handler(BaseHTTPRequestHandler):
                 "note": "Read-only cached credential check; refreshed when the service starts."
             })
             return
+        if path == "/local-render-status" and self.command == "GET":
+            # Public, read-only status for explicitly named local-render smoke tests only.
+            # Exposes no titles, raw errors, edit payloads, or credentials.
+            con = None
+            try:
+                con = connect_db()
+                rows = execute(con, """SELECT id,state,updated_at,provider_id,render_url,error
+                    FROM jobs
+                    WHERE title LIKE %s
+                    ORDER BY id DESC LIMIT 5""",
+                    ("IA10_LOCAL_RENDER_SMOKE_TEST%",)).fetchall()
+                tests = []
+                for row in rows:
+                    job_id = int(row["id"] or 0)
+                    state = str(row["state"] or "UNKNOWN")
+                    provider_id = str(row["provider_id"] or "")
+                    render_url = str(row["render_url"] or "")
+                    error = str(row["error"] or "").lower()
+                    category = "none"
+                    if error:
+                        if "audio_stream_missing" in error:
+                            category = "qc_audio_missing"
+                        elif "decode" in error or "invalid_or_incomplete" in error:
+                            category = "qc_decode"
+                        elif "duration_out_of_range" in error or "not_portrait" in error or "dimensions_missing" in error:
+                            category = "qc_format"
+                        elif "render_url" in error or "download_failed" in error:
+                            category = "qc_render_url"
+                        elif "provider_http_403" in error or "sandbox key rejected" in error:
+                            category = "provider_auth_or_permission"
+                        else:
+                            category = "other"
+                    item = {
+                        "id": job_id,
+                        "state": state,
+                        "updated_at": int(row["updated_at"] or 0),
+                        "provider": provider_id if provider_id in ("local-ffmpeg-edge-tts",) else ("shotstack" if provider_id else "unknown"),
+                        "render_url_available": bool(render_url.startswith("https://")),
+                        "error_category": category,
+                        "technical_qc_pass_indicated": state == "QC_PENDING_REVIEW",
+                        "editorial_approval_required": state == "QC_PENDING_REVIEW",
+                        "published": False
+                    }
+                    if (provider_id == "local-ffmpeg-edge-tts"
+                        and state == "QC_PENDING_REVIEW"
+                        and render_url.startswith("https://")
+                        and render_url.startswith(os.environ.get("IA10_PUBLIC_BASE_URL", "https://ia10-renderer-bridge.onrender.com").rstrip("/") + "/media/")):
+                        item["media_url"] = render_url
+                    tests.append(item)
+                return self.send_json(200, {
+                    "read_only": True,
+                    "tests": tests,
+                    "count": len(tests),
+                    "note": "Diagnostic smoke tests only. QC_PENDING_REVIEW indicates technical QC passed; editorial approval and publication remain separate."
+                })
+            except Exception as exc:
+                print("local_render_status_failed type=%s" % type(exc).__name__, flush=True)
+                return self.send_json(503, {"error":"local_render_status_unavailable"})
+            finally:
+                if con is not None:
+                    try:
+                        con.close()
+                    except Exception:
+                        pass
+
         if path in ("/queue-summary", "/queue-diagnostics") and self.command == "GET":
             private_diagnostics = path == "/queue-diagnostics"
             if private_diagnostics and not self.authorized():
