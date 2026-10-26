@@ -31,6 +31,7 @@ jobs:
           value = payload.get("value", "")
           if not value or len(value) > 16384 or any(c in value for c in "\r\n"):
               raise SystemExit("OIDC_TOKEN_REQUEST_FAILED: invalid token response")
+          print("::add-mask::" + value, flush=True)
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
               output.write("token=" + value + "\n")
           PY
